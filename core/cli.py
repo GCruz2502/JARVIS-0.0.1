@@ -34,7 +34,7 @@ def start_cli():
             reminder_time = input("Enter reminder time (YYYY-MM-DD HH:MM:SS): ")
             set_reminder(reminder_text, reminder_time)
             collect_data(command, f"Reminder set for {reminder_time}")
-        elif 'exit' in command or 'quit' in command:
+        elif 'exit' in command or 'quit' in command or 'bye' in command:
             speak("Goodbye!")
             print("JARVIS: Goodbye!")
             break

@@ -14,5 +14,8 @@ def load_data():
     if os.path.exists("data/commands.json"):
         with open("data/commands.json", "r") as f:
             for line in f:
-                data.append(json.loads(line.strip()))
+                try:
+                    data.append(json.loads(line.strip()))
+                except json.JSONDecodeError:
+                    continue
     return data
