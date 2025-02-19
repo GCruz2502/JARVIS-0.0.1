@@ -1,5 +1,8 @@
 import os
 
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+CONFIG_PATH = os.path.join(BASE_DIR, "config", "config.json")
+
 # OpenWeather API Key
 OPENWEATHER_API_KEY = os.getenv("0772b676ef44deb64c03aac472b12b48")
 
