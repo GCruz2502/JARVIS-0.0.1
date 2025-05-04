@@ -1,32 +1,144 @@
-# 🐍 Entornos virtuales de Python
+# 🐍 Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+*.pyo
+*.pyc
+
+# 🌐 Entornos virtuales
+venv/
+env/
+ENV/
+.env
+.venv/
 JARVIS_v1/
 JARVIS_v0.5.1/
 JARVIS_v0.5.2/
 JARVIS_v0.1/
-.venv/
 
-# 🧪 Archivos de Python
-__pycache__/
-*.py[cod]
-*.so
-*.egg-info/
-*.pyo
+# Jupyter Notebooks
+.ipynb_checkpoints
 
-# ⚙️ Archivos de configuración temporal
+# IDEs and editors
+.idea/
+.vscode/
+*.swp
+*.swo
+*.sublime-workspace
+*.sublime-project
+.settings/
+.directory
+
+# 🖥️ Archivos del sistema operativo
+.DS_Store
+._.DS_Store
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# 🧠 Machine Learning - modelos y datasets
+models/
+datasets/
+*.model
+*.h5
+*.pkl
+*.joblib
+*.pt
+*.pth
+*.bin
+*.onnx
+checkpoints/
+runs/
+
+# 📊 Logs y bases de datos
 *.log
-*.db
+*.sql
 *.sqlite
+*.sqlite3
+*.db
+logs/
+log.txt
+
+
+# 🔊 Archivos de audio (para reconocimiento de voz)
+*.wav
+*.mp3
+*.ogg
+*.flac
+temp_audio/
+speech_recognition_recordings/
+# Excepto archivos de ejemplo o prueba
+!examples/*.wav
+!examples/*.mp3
+
+# 🔐 Archivos de configuración con datos sensibles
+config.ini
+*credentials.json
+*.key
+secrets.json
+# Excepto ejemplos
+!example_config.ini
+!example_credentials.json
+
+# 🗄️ Archivos de caché
+.cache/
+.sass-cache/
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+coverage.xml
+*.cover
+
+# 📦 Archivos de dependencias
+# Mantener requirements.txt en el repositorio
+# requirements.txt
+
+# Archivos temporales
+tmp/
+temp/
+*.tmp
 *.bak
-*.DS_Store
+*._
+
+# 📚 Documentación generada
+docs/_build/
+site/
+
+# Archivos específicos del proyecto JARVIS
+# Excepto los módulos y plugins esenciales
+**/private_data/
+**/user_data/
+**/trained_models/
+**/speech_recognition_recordings/
+bot_config/
+plugins/*/temp/
+plugins/*/cache/
 
 # 📦 Node.js / MCP
 node_modules/
-
-# 🧠 Archivos de contexto (Claude/MCP)
 .mcp/
 
-# 🛠 VS Code settings
-.vscode/
-
-# 📁 MacOS archivos invisibles
-.DS_Store
+# 🧪 Archivos de pruebas
+.pytest_cache/
+nosetests.xml
