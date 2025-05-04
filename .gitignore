@@ -150,3 +150,6 @@ nosetests.xml
 models/vosk-model-es-0.42/rescore/G.carpa
 models/vosk-model-es-0.42/graph/HCLG.fst
 models/vosk-model-es-0.42/rescore/G.fst
+
+# .gitignore
+models/vosk-model-es-0.42/
