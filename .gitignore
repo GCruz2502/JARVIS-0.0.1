@@ -96,6 +96,9 @@ config.ini
 *credentials.json
 *.key
 secrets.json
+# Archivos de datos pesados
+data/._commands.json
+data/*.json
 # Excepto ejemplos
 !example_config.ini
 !example_credentials.json
