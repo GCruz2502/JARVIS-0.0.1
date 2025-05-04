@@ -1,0 +1,32 @@
+# 🐍 Entornos virtuales de Python
+JARVIS_v1/
+JARVIS_v0.5.1/
+JARVIS_v0.5.2/
+JARVIS_v0.1/
+.venv/
+
+# 🧪 Archivos de Python
+__pycache__/
+*.py[cod]
+*.so
+*.egg-info/
+*.pyo
+
+# ⚙️ Archivos de configuración temporal
+*.log
+*.db
+*.sqlite
+*.bak
+*.DS_Store
+
+# 📦 Node.js / MCP
+node_modules/
+
+# 🧠 Archivos de contexto (Claude/MCP)
+.mcp/
+
+# 🛠 VS Code settings
+.vscode/
+
+# 📁 MacOS archivos invisibles
+.DS_Store
