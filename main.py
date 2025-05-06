@@ -5,93 +5,84 @@ Main entry point for the aplication
 import sys
 import os
 import logging
+from dotenv import load_dotenv
 
 # Configuración de logging
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    handlers=[
-        logging.FileHandler("jarvis.log"),
-        logging.StreamHandler()
-    ]   
+    filename="JARVIS.log",
 )
-
 logger=logging.getLogger(__name__)
 
-def setup_environment():
-    """Configura el entorno de la aplicación."""
-    # Añadir directorios al path
-    base_dir = os.path.dirname(os.path.abspath(__file__))
-    sys.path.append(base_dir)
+# Cargar variables de entorno
+load_dotenv()
 
-    # Comprobar archivos necesarios
-    required_dirs = ['config', 'core', 'data', 'plugins', 'src']
-    for directory in required_dirs:
-        if not os.path.exists(directory):
-            os.makedirs(directory)
-            logger.info(f"Directorio creado: {directory}")
+# Importar componentes del núcleo
+from jarvis.core.speech_recognition import SpeechRecognizer
+from jarvis.core.text_to_speech import TextToSpeech
+from jarvis.core.intent_processor import IntentProcessor
 
-    # Comprobar si existe el archivo .env
-    if not os.path.exists(os.path.join("config", ".env")):
-        logger.warning("Archivo .env no encontrado. Las APIs pueden no funcionar correctamente.")
+class Jarvis:
+    def __init__(self):
+        """Inicializa el asistente JARVIS con sus componentes principales"""
+        logger.info("Inicializando JARVIS...")
+        try:
+            self.speech_recognizer = SpeechRecognizer()
+            self.tts = TextToSpeech()
+            self.intent_processor = IntentProcessor()
+        except Exception as e:
+            logger.error(f"Error al inicializar JARVIS: {str(e)}")
+            raise
+        
+    def listen(self):
+        """Escucha al usuario y devuelve el texto reconocido"""
+        try:
+            logger.info("Escuchando...")
+            self.tts.speak("Te escucho")
+            text = self.speech_recognizer.recognize_speech()
+            logger.info(f"Reconocido: {text}")
+            return text
+        except Exception as e:
+            logger.error(f"Error al escuchar: {str(e)}")
+            self.tts.speak("Lo siento, no pude entenderte")
+            return None
+      
+    def process_command(self, text):
+        """Procesa el comando de texto y ejecuta la acción correspondiente"""
+        if not text:
+            return
+        
+        try:
+            logger.info(f"Procesando comando: {text}")
+            response = self.intent_processor.process(text)
+            logger.info(f"Respuesta: {response}")
+            self.tts.speak(response)
+        except Exception as e:
+            logger.error(f"Error al procesar el comando: {str(e)}")
+            self.tts.speak("Lo siento, no pude procesar ese comando")
 
-def main():
-    """Función principal de JARVIS"""
-    try:
-        # Configurar el entorno
-        setup_environment()
+    def run(self):
+        """Ejecuta el ciclo principal del asistente"""
+        logger.info("Iniciando el ciclo principal de JARVIS")
+        self.tts.speak("Hola, soy JARVIS. ¿En qué puedo ayudarte?")
 
-        # Importar después de configurar el entorno
-        from src.voice import hablar, escuchar
-        from src.commands import ejecutar_comando
-        from src.utils import saludo
-
-        # Iniciar el asistente
-        logger.info("Iniciando JARVIS...")
-        mensaje_bienvenida = f"{saludo()}, soy JARVIS. ¿En qué puedo ayudarte?"
-        print(mensaje_bienvenida)
-        hablar(mensaje_bienvenida)
-
-        # Bucle principal
-        while True:
-            texto = escuchar()
-            if texto:
-                logger.info(f"Comando recibido: {texto}")
-
-                if "Terminar" in texto or "Adios" in texto:
-                    hablar("Hasta luego!")
+        try:
+            while True:
+                text = self.listen()
+                if text and "adios" in text.lower():
+                    self.tts.speak("Hasta luego!")
                     break
+                self.process_command(text)
+        except KeyboardInterrupt:
+            logger.info("Deteniendo JARVIS por interrupción del usuario")
+            self.tts.speak("Cerrando sistemas. Hasta pronto")
+        except Exception as e:
+            logger.critical(f"Error crítico en JARVIS: {str(e)}")
+            self.tts.speak("Se ha producido un error crítico. Reiniciando sistemas")
 
-                if not ejecutar_comando(texto):
-                    hablar("Comando no reconocido")
-                    # Intentar usar el modelo de ML para responder
-                    try:
-                        from core.ml_models import train_model, predict_response
-                        from core.reportes import chat_with_jarvis
-
-                        model = train_model()
-                        response = predict_response(model, texto)
-
-                        if response == "I don't know the answer to that yet.":
-                            response = chat_with_jarvis(texto)
-
-                        hablar(response)
-                        logger.info(f"Respuesta generada: {response}")
-
-                    except Exception as e:
-                        logger.error(f"Error al procesar el ML: {e}")
-                        hablar("Lo siento, no puedo procesar la solicitud en este momento.")
-
-    except KeyboardInterrupt:
-        logger.info("Interrupción del teclado detectada. Cerrando JARVIS.")
-        print("\nJarvis se ha cerrado.")
-    except Exception as e:
-        logger.error(f"Error círitico: {e}")
-        print(f"Error: {e}")
-        return 1
-    
-    return 0
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    assistant = Jarvis()
+    assistant.run()
