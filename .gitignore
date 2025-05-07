@@ -153,3 +153,6 @@ models/vosk-model-es-0.42/rescore/G.fst
 
 # .gitignore
 models/vosk-model-es-0.42/
+
+# Memory Bank - Personal use, not for repository
+memory-bank/
