@@ -22,6 +22,7 @@ JARVIS es un asistente virtual inteligente diseñado para facilitar tareas diari
 - Python 3.8 o superior
 - Conexión a Internet para funcionalidades basadas en API
 - Micrófono (para interacción por voz)
+- **macOS**: PortAudio (`brew install portaudio`) - Necesario para `PyAudio`.
 
 ### Instalación
 
@@ -33,26 +34,28 @@ JARVIS es un asistente virtual inteligente diseñado para facilitar tareas diari
 
 2. **Configurar entorno virtual**:
    ```bash
-   python -m venv JARVIS_v1
+   python3 -m venv jarvis-env 
    ```
+   *(Nota: Se recomienda usar `python3` explícitamente)*
 
    **Para activar el entorno virtual**:
    - En Windows:
      ```bash
-     JARVIS_v1\Scripts\activate
+     jarvis-env\Scripts\activate
      ```
    - En macOS/Linux:
      ```bash
-     source JARVIS_v1/bin/activate
+     source jarvis-env/bin/activate
      ```
 
 3. **Instalar dependencias**:
    ```bash
-   pip install -r reduced-requirements.txt
+   pip install -r reduced-requirements-0.5.1.txt
    ```
+   *(Asegúrate de que el entorno virtual esté activado antes de ejecutar este comando)*
 
 4. **Configurar claves de API**:
-   - Crea un archivo `APIs.env` en la carpeta `config/` con el siguiente formato:
+   - Crea un archivo `.env` en la raíz del proyecto con el siguiente formato:
      ```env
      OPENWEATHER_API_KEY=tu_clave_openweather
      NEWSAPI_KEY=tu_clave_newsapi
@@ -77,27 +80,46 @@ JARVIS es un asistente virtual inteligente diseñado para facilitar tareas diari
 ## 🧩 Estructura del Proyecto
 
 ```
-jarvis-assistant/
-├── main.py                # Punto de entrada principal
-├── config/               # Configuraciones y variables de entorno
-│   ├── settings.py       # Configuraciones globales
-│   └── .env              # Variables de entorno (no incluido en git)
-├── core/                 # Componentes centrales
-│   ├── cli.py            # Interfaz de línea de comandos
-│   ├── database.py       # Manejo de base de datos
-│   ├── ml_models.py      # Modelos de aprendizaje automático
-│   └── reportes.py       # Generación de informes y logs
-├── src/                  # Código fuente principal
-│   ├── commands.py       # Procesamiento de comandos
-│   ├── utils.py          # Utilidades generales
-│   └── voice.py          # Procesamiento de voz
-├── plugins/              # Sistema de plugins extensible
-│   ├── __init__.py       # Inicialización de plugins
-│   └── music.py          # Plugin de música (ejemplo)
-├── data/                 # Almacenamiento de datos e historial
-├── models/               # Modelos entrenados
-├── test/                 # Tests unitarios y de integración
-└── requirements.txt      # Dependencias del proyecto
+My_Project/
+├── .gitattributes
+├── .gitignore
+├── .python-version
+├── main.py                 # Punto de entrada principal
+├── README.md               # Este archivo
+├── Recomendaciones.pdf
+├── reduced-requirements-0.5.1.txt # Dependencias del proyecto
+├── .env                    # Variables de entorno (API Keys, etc. - No incluir en Git)
+├── config/                 # Configuraciones específicas
+│   ├── config.json
+│   ├── data.json
+│   └── settings.py
+├── core/                   # Componentes centrales de JARVIS
+│   ├── __init__.py
+│   ├── cli.py
+│   ├── database.py
+│   ├── intent_processor.py
+│   ├── ml_models.py
+│   └── reportes.py
+├── memory-bank/            # Documentación interna y contexto del proyecto
+│   ├── activeContext.md
+│   ├── productContext.md
+│   ├── progress.md
+│   ├── projectbrief.md
+│   ├── systemPatterns.md
+│   └── techContext.md
+├── models/                 # Modelos entrenados (ej: ML, Vosk)
+├── plugins/                # Sistema de plugins extensible
+│   ├── __init__.py
+│   ├── music.py
+│   └── weather.py
+├── src/                    # Código fuente principal (utilidades, voz, comandos)
+│   ├── __init__.py
+│   ├── commands.py
+│   ├── utils.py
+│   └── voice.py
+├── test/                   # Tests unitarios y de integración
+│   └── test_commands.py
+└── jarvis-env/             # Entorno virtual (creado por `python3 -m venv jarvis-env`)
 ```
 
 ## 🔌 Sistema de Plugins
@@ -123,9 +145,15 @@ def register(comandos):
 
 ### Requisitos para desarrollo
 
+*(Asegúrate de tener activado el entorno virtual `jarvis-env`)*
 ```bash
-pip install -r requirements.txt  # Instala todas las dependencias, incluidas las de desarrollo
+# Si existe un archivo requirements-dev.txt o similar para desarrollo:
+# pip install -r requirements-dev.txt 
+
+# O instala dependencias adicionales manualmente:
+# pip install pytest flake8 black ... 
 ```
+*(Nota: Actualmente solo existe `reduced-requirements-0.5.1.txt`. Si se necesita un archivo completo para desarrollo, debería crearse)*
 
 ### Ejecutar tests
 
