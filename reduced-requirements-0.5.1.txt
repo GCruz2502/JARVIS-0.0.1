@@ -8,10 +8,11 @@ schedule==1.2.2
 vosk==0.3.44
 
 # Machine Learning
-numpy==2.2.5
+numpy # Removed version pin to get latest compatible for Python 3.12
 pandas==2.2.3
 scikit-learn==1.6.1
 nltk==3.9.1
+spacy # Removed version pin
 
 # Optional NLP/AI components
 transformers==4.51.3
