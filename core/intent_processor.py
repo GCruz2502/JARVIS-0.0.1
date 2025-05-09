@@ -353,74 +353,101 @@ class IntentProcessor:
              }
         # --- End Context Management Example ---
 
-        # Verificar cada plugin para ver si puede manejar esta intención
-        # Pass context to can_handle and handle methods
-        for name, plugin in self.plugins.items():
+        # --- Plugin Handling Logic ---
+        candidate_plugins = []
+        for name, plugin_instance in self.plugins.items():
             try:
-                # Check if plugin methods accept context using inspect
-                can_handle_sig = inspect.signature(plugin.can_handle)
-                handle_sig = inspect.signature(plugin.handle)
-
-                # Check if plugin methods accept context, doc, and/or merged_entities
-                can_handle_accepts_context = 'context' in can_handle_sig.parameters
-                can_handle_accepts_doc = 'doc' in can_handle_sig.parameters
-                can_handle_accepts_entities = 'entities' in can_handle_sig.parameters # New check
-                handle_accepts_context = 'context' in handle_sig.parameters
-                handle_accepts_doc = 'doc' in handle_sig.parameters
-                handle_accepts_entities = 'entities' in handle_sig.parameters # New check
-
-                # --- Prepare arguments for can_handle based on signature ---
-                # Prioritize passing entities if accepted, then doc, then text
+                can_handle_sig = inspect.signature(plugin_instance.can_handle)
                 can_handle_args = {}
-                if can_handle_accepts_entities:
-                    can_handle_args['entities'] = merged_entities
-                if can_handle_accepts_doc and doc:
-                     can_handle_args['doc'] = doc
-                # Always pass text for now, plugins might still expect it
-                can_handle_args['text'] = processed_text
-                if can_handle_accepts_context:
-                    can_handle_args['context'] = self.context
+                if 'entities' in can_handle_sig.parameters: can_handle_args['entities'] = merged_entities
+                if 'doc' in can_handle_sig.parameters and doc: can_handle_args['doc'] = doc
+                can_handle_args['text'] = processed_text # Always pass text
+                if 'context' in can_handle_sig.parameters: can_handle_args['context'] = self.context
 
-                # --- Check if plugin can handle ---
-                # Use keyword arguments for clarity and flexibility
-                if hasattr(plugin, 'can_handle') and plugin.can_handle(**can_handle_args):
-                    logger.info(f"Plugin '{name}' can handle: '{text}'. Context: {self.context}")
-                    plugin_used = name
-
-                    # --- Prepare arguments for handle based on signature ---
-                    handle_args = {}
-                    if handle_accepts_entities:
-                        handle_args['entities'] = merged_entities
-                    if handle_accepts_doc and doc:
-                        handle_args['doc'] = doc
-                    # Always pass text
-                    handle_args['text'] = processed_text
-                    if handle_accepts_context:
-                        handle_args['context'] = self.context
-
-                    # --- Execute handle method ---
-                    # Use keyword arguments
-                    handle_result = plugin.handle(**handle_args)
-
-                    # --- Process handle result (response and potential context update) ---
-                    if isinstance(handle_result, tuple) and len(handle_result) == 2:
-                        response, updated_context = handle_result
-                        if isinstance(updated_context, dict):
-                            self.context.update(updated_context) # Update processor's context
-                            logger.info(f"Plugin '{name}' updated context: {updated_context}")
-                        else:
-                             logger.warning(f"Plugin '{name}' returned non-dict context: {updated_context}")
-                    else:
-                        response = handle_result # Assume only response was returned
-
-                    intent_label_for_output = name # Set intent label to plugin name
-
-                    break # Stop after finding the first handling plugin
+                if hasattr(plugin_instance, 'can_handle') and plugin_instance.can_handle(**can_handle_args):
+                    candidate_plugins.append(name)
             except Exception as e:
-                 logger.error(f"Error checking or handling plugin {name} for text '{text}': {e}", exc_info=True)
+                logger.error(f"Error checking can_handle for plugin {name}: {e}", exc_info=True)
+
+        chosen_plugin_name = None
+        if len(candidate_plugins) == 1:
+            chosen_plugin_name = candidate_plugins[0]
+            logger.info(f"Single candidate plugin: {chosen_plugin_name}")
+        elif len(candidate_plugins) > 1:
+            logger.info(f"Multiple candidate plugins: {candidate_plugins}. Using zero-shot for disambiguation.")
+            if self.advanced_nlp_processor and self.advanced_nlp_processor.zero_shot_classifier:
+                # Use plugin names (or more descriptive labels mapped to them) as candidates
+                # For now, using plugin names directly. This might need refinement.
+                # The intent_labels_map could be enhanced to map plugin names to descriptive phrases.
+                # For TC008, candidate_plugins would be ['music', 'reminders']
+                # We need to map these back to descriptive phrases for zero-shot if possible,
+                # or ensure zero-shot can work with plugin names as labels.
+                # Let's assume for now we have a way to get descriptive labels for these plugins.
+                # This part needs a robust mapping from plugin name to a descriptive label for zero-shot.
+                # For simplicity in this step, I'll use a placeholder mapping.
+                # A more robust solution would be for plugins to declare their "zero-shot phrases".
+                
+                plugin_to_phrase_map = {
+                    "weather": "check weather",
+                    "music": "play music",
+                    "reminders": "set reminder" 
+                    # Add other plugins here
+                }
+                zeroshot_candidate_labels = [plugin_to_phrase_map.get(p_name, p_name) for p_name in candidate_plugins if plugin_to_phrase_map.get(p_name)]
+                
+                if zeroshot_candidate_labels:
+                    classification_result = self.advanced_nlp_processor.classify_intent(text, zeroshot_candidate_labels)
+                    zero_shot_result_for_output = classification_result # Capture for output
+                    logger.info(f"Zero-shot for disambiguation among {candidate_plugins} (using labels {zeroshot_candidate_labels}): {classification_result}")
+
+                    if classification_result and not classification_result.get("error") and classification_result['scores'][0] > 0.5: # Stricter threshold for disambiguation
+                        top_phrase = classification_result['labels'][0]
+                        # Find which plugin name corresponds to this top_phrase
+                        for p_name, phrase in plugin_to_phrase_map.items():
+                            if phrase == top_phrase and p_name in candidate_plugins:
+                                chosen_plugin_name = p_name
+                                logger.info(f"Zero-shot chose '{chosen_plugin_name}' from candidates with score {classification_result['scores'][0]}.")
+                                break
+                    else:
+                        logger.warning(f"Zero-shot disambiguation failed or score too low. Candidates: {candidate_plugins}")
+                else:
+                    logger.warning(f"Could not map candidate plugins {candidate_plugins} to descriptive phrases for zero-shot.")
+
+            if not chosen_plugin_name and candidate_plugins: # Fallback if zero-shot fails to pick one
+                 logger.warning(f"Zero-shot failed to disambiguate. Picking first candidate: {candidate_plugins[0]}")
+                 # chosen_plugin_name = candidate_plugins[0] # Or handle as ambiguous / error
+                 # For now, let's not pick one if zero-shot fails, to let it go to general fallback.
+                 pass
 
 
-        # Fallback handling if no plugin handled explicitly via can_handle
+        if chosen_plugin_name:
+            plugin = self.plugins[chosen_plugin_name]
+            name = chosen_plugin_name # for logging and output
+            try:
+                handle_sig = inspect.signature(plugin.handle)
+                handle_args = {}
+                if 'entities' in handle_sig.parameters: handle_args['entities'] = merged_entities
+                if 'doc' in handle_sig.parameters and doc: handle_args['doc'] = doc
+                handle_args['text'] = processed_text # Always pass text
+                if 'context' in handle_sig.parameters: handle_args['context'] = self.context
+                
+                plugin_used = name
+                handle_result = plugin.handle(**handle_args)
+
+                if isinstance(handle_result, tuple) and len(handle_result) == 2:
+                    response, updated_context = handle_result
+                    if isinstance(updated_context, dict):
+                        self.context.update(updated_context)
+                        logger.info(f"Plugin '{name}' updated context: {updated_context}")
+                    else:
+                        logger.warning(f"Plugin '{name}' returned non-dict context: {updated_context}")
+                else:
+                    response = handle_result
+                intent_label_for_output = name
+            except Exception as e:
+                logger.error(f"Error handling plugin {name} for text '{text}': {e}", exc_info=True)
+        
+        # Fallback handling if no plugin chosen or chosen plugin failed
         if response is None:
             logger.debug(f"No plugin handled '{text}' via can_handle. Trying fallbacks.")
 
@@ -449,19 +476,20 @@ class IntentProcessor:
                     
                     question_part = text # Use the full text as the question for now
 
-                    qa_result = self.advanced_nlp_processor.answer_question(question_part, context_for_qa, lang=current_lang)
-                    qa_result_for_output = qa_result # Capture for output
-                    logger.info(f"Hugging Face QA (lang={current_lang}) attempt for question '{question_part}': {qa_result}")
+                    qa_result_attempt = self.advanced_nlp_processor.answer_question(question_part, context_for_qa, lang=current_lang)
+                    logger.info(f"Hugging Face QA (lang={current_lang}) attempt for question '{question_part}': {qa_result_attempt}")
 
                     # Use the answer if confidence is high enough
                     confidence_threshold = 0.3 # Adjust as needed
-                    if qa_result and not qa_result.get("error") and qa_result.get('score', 0) > confidence_threshold:
-                       response = qa_result['answer']
+                    if qa_result_attempt and not qa_result_attempt.get("error") and qa_result_attempt.get('score', 0) > confidence_threshold:
+                       response = qa_result_attempt['answer']
                        plugin_used = f"AdvancedNLP_QA (lang={current_lang})"
                        intent_label_for_output = "qa_fallback" # Set intent label
-                       logger.info(f"Using QA answer with score {qa_result.get('score')}")
+                       qa_result_for_output = qa_result_attempt # Capture for output ONLY if used
+                       logger.info(f"Using QA answer with score {qa_result_attempt.get('score')}")
                     else:
-                       logger.info(f"QA score below threshold or error occurred. Score: {qa_result.get('score', 0)}")
+                       logger.info(f"QA score below threshold or error occurred. Score: {qa_result_attempt.get('score', 0)}. QA result will not be used for final response or output.")
+                       # qa_result_for_output remains None or its previous value if not used
 
                 except Exception as e:
                     logger.error(f"Error during advanced NLP QA fallback: {e}", exc_info=True)

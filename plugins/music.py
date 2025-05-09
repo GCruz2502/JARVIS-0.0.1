@@ -17,12 +17,12 @@ class Plugin:
         """Determines if this plugin can handle the text based on keywords or lemmas."""
         # Using keywords/lemmas is likely sufficient for triggering the music plugin
         keywords_es = ["reproducir", "pon", "escuchar", "música", "canción", "artista", "playlist", "sonar"]
-        keywords_en = ["play", "put on", "listen", "music", "song", "artist", "playlist", "sound"]
+        keywords_en = ["play", "put on", "listen", "music", "song", "artist", "playlist", "sound", "hear"] # Added "hear"
         
         if doc:
             # Check lemmas for robustness
             lemmas_es = ["reproducir", "poner", "escuchar", "música", "canción", "artista", "playlist", "sonar"]
-            lemmas_en = ["play", "put", "listen", "music", "song", "artist", "playlist", "sound"]
+            lemmas_en = ["play", "put", "listen", "music", "song", "artist", "playlist", "sound", "hear"] # Added "hear"
             
             # Determine language based on doc object's vocab lang if possible, else use context or default
             lang = context.get('current_lang', 'es') # Assuming context might hold lang

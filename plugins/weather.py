@@ -16,14 +16,23 @@ class Plugin:
     # Keep can_handle simple for now, or update to check entities if needed
     def can_handle(self, text: str, doc: Doc = None, context: dict = None, entities: list = None) -> bool: # Added entities
         """Determina si este plugin puede manejar el texto de entrada"""
+        text_lower = text.lower()
         # Option 1: Simple keyword check (current approach)
-        keywords = ["tiempo", "clima", "lluvia", "temperatura", "sol", "pronóstico"] 
-        if any(keyword in text.lower() for keyword in keywords):
+        # Combined Spanish and English keywords
+        keywords = [
+            "tiempo", "clima", "lluvia", "temperatura", "sol", "pronóstico", # Spanish
+            "weather", "forecast", "temperature", "rain", "sun" # English
+        ]
+        if any(keyword in text_lower for keyword in keywords):
              return True
 
         # Option 2: Check doc lemmas (more robust)
         if doc:
-            lemmas = ["tiempo", "clima", "llover", "temperatura", "sol", "pronosticar"]
+            # Combined Spanish and English lemmas
+            lemmas = [
+                "tiempo", "clima", "llover", "temperatura", "sol", "pronosticar", # Spanish
+                "weather", "forecast", "temperature", "rain", "sun" # English
+            ]
             if any(token.lemma_ in lemmas for token in doc):
                 return True
         
