@@ -31,10 +31,11 @@ class IntentProcessor:
         # Check if ruler already exists
         if ruler_name in nlp.pipe_names:
             ruler = nlp.get_pipe(ruler_name)
-            logger.info(f"EntityRuler '{ruler_name}' already exists, updating patterns.")
+            logger.info(f"EntityRuler '{ruler_name}' already exists, will be updated with new patterns.")
         else:
-            ruler = nlp.add_pipe("entity_ruler", name=ruler_name, before="ner")
-            logger.info(f"EntityRuler '{ruler_name}' added before NER.")
+            # Add ruler AFTER NER and configure to OVERWRITE statistical entities
+            ruler = nlp.add_pipe("entity_ruler", name=ruler_name, after="ner", config={"overwrite_ents": True})
+            logger.info(f"EntityRuler '{ruler_name}' added after NER with overwrite_ents=True.")
 
         # Define patterns
         patterns = [
@@ -61,14 +62,13 @@ class IntentProcessor:
 
             # --- WORK_OF_ART Patterns (Tentative/Experimental) ---
             # Text after "canción" or "álbum" - might be too broad
-            {"label": "WORK_OF_ART", "pattern": [{"LOWER": {"IN": ["canción", "album", "álbum"]}}, {"IS_TITLE": True, "OP": "+"}]},
-            # Text in quotes (might capture other things too)
-            {"label": "WORK_OF_ART", "pattern": [{"ORTH": '"'}, {"OP": "+"}, {"ORTH": '"'}]},
-            {"label": "WORK_OF_ART", "pattern": [{"ORTH": "'"}, {"OP": "+"}, {"ORTH": "'"}]},
+            {"label": "WORK_OF_ART", "pattern": [{"LOWER": {"IN": ["canción", "song", "album", "álbum"]}}, {"IS_TITLE": True, "OP": "+"}]}, # Added "song"
+            # Text in quotes (Corrected to capture content within quotes)
+            {"label": "WORK_OF_ART", "pattern": [{"ORTH": '"'}, {"IS_ASCII": True, "OP": "+"}, {"ORTH": '"'}]},
+            {"label": "WORK_OF_ART", "pattern": [{"ORTH": "'"}, {"IS_ASCII": True, "OP": "+"}, {"ORTH": "'"}]},
         ]
 
-        # Overwrite patterns to ensure clean state for testing/reloading
-        # ruler.add_patterns(patterns) # This might duplicate if run multiple times
+        # Initialize the ruler with the new patterns. This will overwrite existing patterns if the ruler already exists.
         ruler.initialize(lambda: [], nlp=nlp, patterns=patterns)
 
         logger.info(f"EntityRuler '{ruler_name}' initialized/updated with {len(patterns)} patterns.")
@@ -98,6 +98,8 @@ class IntentProcessor:
         try:
             self.nlp_en = spacy.load("en_core_web_sm")
             logger.info("Modelo spaCy 'en_core_web_sm' cargado.")
+            # Add custom rules to the English model as well
+            self.nlp_en = self._add_custom_entity_ruler(self.nlp_en)
         except OSError:
             logger.error("Error al cargar 'en_core_web_sm'. Ejecuta: python -m spacy download en_core_web_sm")
         except Exception as e:
@@ -143,12 +145,16 @@ class IntentProcessor:
         """Carga dinámicamente los plugins desde el directorio plugins"""
         try:
             plugins_dir = Path(__file__).parent.parent / "plugins"
-            plugin_files = [f for f in os.listdir(plugins_dir) if f.endswith('.py') and f != '__init__.py']
+            plugin_files = [
+                f for f in os.listdir(plugins_dir) 
+                if f.endswith('.py') and f != '__init__.py' and not f.startswith('.')
+            ]
 
             for plugin_file in plugin_files:
                 plugin_name = plugin_file[:-3]  # Quitar la extensión .py
                 try:
-                    module = importlib.import_module(f"jarvis.plugins.{plugin_name}")
+                    # Corrected import path for plugins
+                    module = importlib.import_module(f"plugins.{plugin_name}")
                     if hasattr(module, 'Plugin'):
                         self.plugins[plugin_name] = module.Plugin()
                         logger.info(f"Plugin cargado: {plugin_name}")
@@ -157,13 +163,15 @@ class IntentProcessor:
         except Exception as e:
             logger.error(f"Error al cargar plugins: {str(e)}")
 
-    def process(self, text):
+    def process(self, text, lang_hint=None): # Added lang_hint
         """
         Procesa el texto para determinar la intención, actualiza el contexto
         y ejecuta el plugin correspondiente.
 
         Args:
             text (str): El texto del comando a procesar.
+            lang_hint (str, optional): Una pista sobre el idioma ('en' o 'es').
+                                       Si se proporciona, se prioriza este idioma.
 
         Returns:
             dict: Un diccionario con los resultados del procesamiento, incluyendo:
@@ -180,33 +188,51 @@ class IntentProcessor:
 
         # --- Procesamiento NLP con spaCy ---
         doc = None
-        current_lang = "es" # Default to Spanish, as it's the primary language
-
-        processed_with_es = False
-        if self.nlp_es:
-            try:
-                doc = self.nlp_es(text)
-                current_lang = "es"
-                processed_with_es = True
-                logger.debug(f"Texto procesado con spaCy (es): {[token.text for token in doc]}")
-                if doc.ents: logger.debug(f"Entidades detectadas (es): {[(ent.text, ent.label_) for ent in doc.ents]}")
-            except Exception as e:
-                logger.error(f"Error procesando texto con spaCy (es): {e}. Intentando inglés si está disponible.")
-                doc = None # Reset doc if Spanish processing failed
-
-        # Try English only if Spanish model is not available OR Spanish processing failed
-        if not processed_with_es and self.nlp_en:
+        current_lang = "es"  # Default
+        
+        if lang_hint == "en" and self.nlp_en:
+            current_lang = "en"
             try:
                 doc = self.nlp_en(text)
-                current_lang = "en" # Switch lang only if English processing succeeds
-                logger.debug(f"Texto procesado con spaCy (en): {[token.text for token in doc]}")
+                logger.debug(f"Texto procesado con spaCy (en) basado en lang_hint: {[token.text for token in doc]}")
                 if doc.ents: logger.debug(f"Entidades detectadas (en): {[(ent.text, ent.label_) for ent in doc.ents]}")
-            except Exception as e_en:
-                 logger.error(f"Error procesando texto con spaCy (en) también: {e_en}")
-                 doc = None # Reset doc if English also failed
-                 # Keep current_lang as "es" (default) if both fail? Or set to None? Let's keep "es".
+            except Exception as e:
+                logger.error(f"Error procesando texto con spaCy (en) con lang_hint: {e}")
+                doc = None
+        elif lang_hint == "es" and self.nlp_es:
+            current_lang = "es"
+            try:
+                doc = self.nlp_es(text)
+                logger.debug(f"Texto procesado con spaCy (es) basado en lang_hint: {[token.text for token in doc]}")
+                if doc.ents: logger.debug(f"Entidades detectadas (es): {[(ent.text, ent.label_) for ent in doc.ents]}")
+            except Exception as e:
+                logger.error(f"Error procesando texto con spaCy (es) con lang_hint: {e}")
+                doc = None
+        else: # Fallback to default logic if no valid hint or corresponding model
+            processed_with_es = False
+            if self.nlp_es:
+                try:
+                    doc = self.nlp_es(text)
+                    current_lang = "es"
+                    processed_with_es = True
+                    logger.debug(f"Texto procesado con spaCy (es) - fallback: {[token.text for token in doc]}")
+                    if doc.ents: logger.debug(f"Entidades detectadas (es) - fallback: {[(ent.text, ent.label_) for ent in doc.ents]}")
+                except Exception as e:
+                    logger.error(f"Error procesando texto con spaCy (es) - fallback: {e}. Intentando inglés si está disponible.")
+                    doc = None
 
-        logger.info(f"Determined language for advanced NLP (defaulting to 'es'): {current_lang}")
+            if not processed_with_es and self.nlp_en:
+                try:
+                    doc = self.nlp_en(text)
+                    current_lang = "en"
+                    logger.debug(f"Texto procesado con spaCy (en) - fallback: {[token.text for token in doc]}")
+                    if doc.ents: logger.debug(f"Entidades detectadas (en) - fallback: {[(ent.text, ent.label_) for ent in doc.ents]}")
+                except Exception as e_en:
+                     logger.error(f"Error procesando texto con spaCy (en) también - fallback: {e_en}")
+                     doc = None
+                     current_lang = "es" # Revert to default if EN also fails
+        
+        logger.info(f"Language for NLP processing: {current_lang} (Hint was: {lang_hint})")
 
         # --- Advanced NLP (Hugging Face) Integration ---
         sentiment_result = None # Store sentiment for later use
@@ -408,14 +434,19 @@ class IntentProcessor:
                is_question and self.advanced_nlp_processor and self.advanced_nlp_processor.qa_pipeline_en and current_lang == "en":
                 try:
                     # Improved dynamic context for QA
-                    # TODO: Requires main loop/plugins to store 'last_user_utterance'/'last_assistant_response' in self.context
-                    last_user = self.context.get('last_user_utterance', '')
-                    last_agent = self.context.get('last_assistant_response', '')
-                    base_context = "Contexto General: JARVIS es un asistente virtual que usa Python, spaCy y Transformers. JARVIS is a voice assistant using Python, spaCy, and Transformers."
-                    # Combine context, prioritizing recent interaction
-                    context_parts = [part for part in [last_user, last_agent, text, base_context] if part] # Filter empty strings
-                    context_for_qa = "\n".join(context_parts)
-
+                    qa_override_context = self.context.get('qa_context_override')
+                    if qa_override_context:
+                        context_for_qa = qa_override_context
+                        logger.info(f"Using qa_context_override for QA: {context_for_qa}")
+                    else:
+                        last_user = self.context.get('last_user_utterance', '')
+                        last_agent = self.context.get('last_assistant_response', '')
+                        base_context = "Contexto General: JARVIS es un asistente virtual que usa Python, spaCy y Transformers. JARVIS is a voice assistant using Python, spaCy, and Transformers."
+                        # Combine context, prioritizing recent interaction
+                        context_parts = [part for part in [last_user, last_agent, text, base_context] if part] # Filter empty strings
+                        context_for_qa = "\n".join(context_parts)
+                        logger.info(f"Using constructed context for QA: {context_for_qa}")
+                    
                     question_part = text # Use the full text as the question for now
 
                     qa_result = self.advanced_nlp_processor.answer_question(question_part, context_for_qa, lang=current_lang)
@@ -626,7 +657,7 @@ class IntentProcessor:
                  # Avoid prepending if the response already seems to handle negativity
                  if not final_response.lower().startswith(("lo siento", "i'm sorry")):
                       final_response = empathetic_phrase + final_response
-                      empathetic_triggered = True
+                      empathetic_triggered = True # Ensure this flag is set
 
         logger.info(f"Final response for '{text}'. Final Context: {self.context}")
         # TODO: Store current 'text' as 'last_user_utterance' and 'final_response' as 'last_assistant_response' in context for next turn. This should happen in the main loop after calling process().
