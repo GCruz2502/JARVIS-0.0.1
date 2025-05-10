@@ -1,17 +1,22 @@
 # plugins/music.py
 import logging
-import os
+import os # os might not be needed if not using os.getenv directly
 import re
+import webbrowser # For opening URLs
 from spacy.tokens import Doc
+from utils.config_manager import ConfigManager # Import ConfigManager
 
 logger = logging.getLogger(__name__)
 
 class Plugin:
     def __init__(self):
         """Initializes the music plugin."""
-        # Placeholder for potential API keys or settings (e.g., Spotify)
+        self.config_manager = ConfigManager() # Use ConfigManager
         logger.info("Music plugin initialized.")
-        # Example: self.spotify_client = self._initialize_spotify()
+        # Example: self.spotify_client_id = self.config_manager.get_env_variable("SPOTIFY_CLIENT_ID")
+
+    def get_description(self) -> str:
+        return "Reproduce música o busca canciones/artistas en Spotify."
 
     def can_handle(self, text: str, doc: Doc = None, context: dict = None, entities: list = None) -> bool: # Added entities
         """Determines if this plugin can handle the text based on keywords or lemmas."""
@@ -70,17 +75,34 @@ class Plugin:
                 logger.info(f"Extracted music query using regex: '{song_or_artist}'")
 
         if song_or_artist:
-            # Placeholder for actual music playback logic
-            # Example: self.spotify_client.play(song_or_artist)
-            logger.info(f"Attempting to play: {song_or_artist}")
-            return f"Intentando reproducir {song_or_artist}..."
+            # Construct a Spotify search URL
+            # This could be made more robust, e.g. URL encoding the query
+            spotify_search_url_template = self.config_manager.get_app_setting(
+                "spotify_search_url_template", 
+                "https://open.spotify.com/search/{query}"
+            )
+            url_to_open = spotify_search_url_template.format(query=song_or_artist)
+            action_message = f"Buscando '{song_or_artist}' en Spotify."
         else:
-            # Generic playback if no specific song/artist detected
-            # Example: self.spotify_client.play_default_playlist()
-            logger.info("No specific song/artist detected, playing default.")
-            return "Reproduciendo tu música."
+            # Generic playback: open Spotify main page or a default playlist
+            url_to_open = self.config_manager.get_app_setting(
+                "spotify_default_url", 
+                "https://open.spotify.com"
+            )
+            action_message = "Abriendo Spotify."
 
-    # Example helper method (replace with actual implementation)
-    # def _initialize_spotify(self):
-    #     # Logic to initialize Spotify client
+        try:
+            logger.info(f"{action_message} URL: {url_to_open}")
+            webbrowser.open(url_to_open)
+            return f"{action_message}"
+        except Exception as e:
+            logger.error(f"Error al intentar abrir Spotify: {e}")
+            return "Lo siento, no pude abrir Spotify en este momento."
+
+    # Example helper method (replace with actual implementation for direct API control)
+    # def _initialize_spotify_client(self):
+    #     # Logic to initialize a Spotify API client
+    #     # client_id = self.config_manager.get_env_variable("SPOTIFY_CLIENT_ID")
+    #     # client_secret = self.config_manager.get_env_variable("SPOTIFY_CLIENT_SECRET")
+    #     # ... setup client ...
     #     return None

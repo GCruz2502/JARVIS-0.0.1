@@ -1,88 +1,88 @@
 """
 JARVIS Virtual Assistant
-Main entry point for the aplication
+Punto de entrada principal de la aplicación.
 """
-import sys
-import os
-import logging
-from dotenv import load_dotenv
+import logging # Para obtener el logger después de la configuración
+from pathlib import Path
 
-# Configuración de logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    filename="JARVIS.log",
-)
-logger=logging.getLogger(__name__)
+# Importar los componentes refactorizados
+from utils.logger import setup_logging
+from utils.config_manager import ConfigManager
+from core.context_manager import ContextManager
+from core.intent_processor import IntentProcessor
+from ui.cli_interface import start_cli
 
-# Cargar variables de entorno
-load_dotenv()
+# Obtener un logger para este módulo (después de que setup_logging haya sido llamado)
+# Esto se hace aquí para que el logger esté disponible globalmente en este script si es necesario.
+# Sin embargo, la configuración principal del logger se hace en setup_logging.
+logger = logging.getLogger(__name__)
 
-# Importar componentes del núcleo
-from jarvis.core.speech_recognition import SpeechRecognizer
-from jarvis.core.text_to_speech import TextToSpeech
-from jarvis.core.intent_processor import IntentProcessor
+def main():
+    """
+    Función principal para inicializar y ejecutar JARVIS.
+    """
+    # 1. Configurar el logging
+    # Se puede hacer configurable a través de ConfigManager si se desea.
+    # Por ejemplo, leer el nivel de log y la ruta del archivo de log desde app_config.json.
+    # Por ahora, usamos valores predeterminados o simples.
+    log_file = Path("jarvis_app.log") # Ejemplo de ruta de archivo de log
+    setup_logging(log_level_str="INFO", log_to_console=True, log_file_path=log_file)
 
-class Jarvis:
-    def __init__(self):
-        """Inicializa el asistente JARVIS con sus componentes principales"""
-        logger.info("Inicializando JARVIS...")
-        try:
-            self.speech_recognizer = SpeechRecognizer()
-            self.tts = TextToSpeech()
-            self.intent_processor = IntentProcessor()
-        except Exception as e:
-            logger.error(f"Error al inicializar JARVIS: {str(e)}")
-            raise
-        
-    def listen(self):
-        """Escucha al usuario y devuelve el texto reconocido"""
-        try:
-            logger.info("Escuchando...")
-            self.tts.speak("Te escucho")
-            text = self.speech_recognizer.recognize_speech()
-            logger.info(f"Reconocido: {text}")
-            return text
-        except Exception as e:
-            logger.error(f"Error al escuchar: {str(e)}")
-            self.tts.speak("Lo siento, no pude entenderte")
-            return None
-      
-    def process_command(self, text):
-        """Procesa el comando de texto y ejecuta la acción correspondiente"""
-        if not text:
-            return
-        
-        try:
-            logger.info(f"Procesando comando: {text}")
-            response = self.intent_processor.process(text)
-            logger.info(f"Respuesta: {response}")
-            self.tts.speak(response)
-        except Exception as e:
-            logger.error(f"Error al procesar el comando: {str(e)}")
-            self.tts.speak("Lo siento, no pude procesar ese comando")
+    logger.info("Iniciando JARVIS...")
 
-    def run(self):
-        """Ejecuta el ciclo principal del asistente"""
-        logger.info("Iniciando el ciclo principal de JARVIS")
-        self.tts.speak("Hola, soy JARVIS. ¿En qué puedo ayudarte?")
+    # 2. Inicializar el ConfigManager
+    # Asume que .env está en la raíz del proyecto y data/app_config.json, data/user_data.json existen.
+    try:
+        config_manager = ConfigManager()
+        logger.info("ConfigManager inicializado.")
+    except Exception as e:
+        logger.critical(f"Error crítico al inicializar ConfigManager: {e}", exc_info=True)
+        print(f"Error crítico al iniciar la configuración: {e}. JARVIS no puede continuar.")
+        return # Salir si la configuración falla
 
-        try:
-            while True:
-                text = self.listen()
-                if text and "adios" in text.lower():
-                    self.tts.speak("Hasta luego!")
-                    break
-                self.process_command(text)
-        except KeyboardInterrupt:
-            logger.info("Deteniendo JARVIS por interrupción del usuario")
-            self.tts.speak("Cerrando sistemas. Hasta pronto")
-        except Exception as e:
-            logger.critical(f"Error crítico en JARVIS: {str(e)}")
-            self.tts.speak("Se ha producido un error crítico. Reiniciando sistemas")
+    # 3. Inicializar el ContextManager
+    try:
+        # La longitud máxima del historial también podría ser configurable
+        max_hist_len = config_manager.get_app_setting("conversation_history_length", 10)
+        context_manager = ContextManager(max_history_len=max_hist_len)
+        logger.info("ContextManager inicializado.")
+    except Exception as e:
+        logger.critical(f"Error crítico al inicializar ContextManager: {e}", exc_info=True)
+        print(f"Error crítico al iniciar el gestor de contexto: {e}. JARVIS no puede continuar.")
+        return
 
+    # 4. Inicializar el IntentProcessor
+    # IntentProcessor carga modelos NLP y plugins en su __init__
+    try:
+        intent_processor = IntentProcessor(context_manager=context_manager, config_manager=config_manager)
+        logger.info("IntentProcessor inicializado y plugins cargados.")
+    except Exception as e:
+        logger.critical(f"Error crítico al inicializar IntentProcessor: {e}", exc_info=True)
+        print(f"Error crítico al iniciar el procesador de intenciones: {e}. JARVIS no puede continuar.")
+        # Podrías querer que JARVIS funcione con funcionalidad limitada si NLP falla,
+        # pero por ahora, saldremos.
+        return
 
+    # 5. Iniciar la interfaz de línea de comandos (CLI)
+    try:
+        start_cli(
+            intent_processor=intent_processor,
+            context_manager=context_manager,
+            config_manager=config_manager
+        )
+    except KeyboardInterrupt:
+        logger.info("JARVIS detenido por el usuario (KeyboardInterrupt en main).")
+        # La CLI ya debería manejar el mensaje de despedida, pero podemos añadir uno aquí si es necesario.
+        # from core.text_to_speech import hablar # Importar solo si es necesario aquí
+        # hablar("Cerrando JARVIS.") 
+        print("\nJARVIS cerrado.")
+    except Exception as e:
+        logger.critical(f"Error crítico no manejado en el bucle principal de la CLI: {e}", exc_info=True)
+        # from core.text_to_speech import hablar
+        # hablar("Se ha producido un error crítico en JARVIS. El sistema se cerrará.")
+        print(f"Error crítico en JARVIS: {e}. El sistema se cerrará.")
+
+    logger.info("JARVIS ha finalizado.")
 
 if __name__ == "__main__":
-    assistant = Jarvis()
-    assistant.run()
+    main()

@@ -7,15 +7,22 @@ import speech_recognition as sr
 from pathlib import Path
 import inspect # Added for signature checking
 import spacy # Added for NLP
-from .advanced_nlp import AdvancedNLPProcessor # Added for Hugging Face integration
+from .nlp_engine import AdvancedNLPProcessor # Corrected: AdvancedNLPProcessor is now in nlp_engine
+from .context_manager import ContextManager # Import ContextManager
 
 logger = logging.getLogger(__name__)
 
 class IntentProcessor:
-    def __init__(self):
-        """Inicializa el procesador de intenciones, carga plugins, modelos NLP y contexto."""
+    def __init__(self, context_manager: ContextManager, config_manager): # Added config_manager for potential plugin init needs
+        """
+        Inicializa el procesador de intenciones.
+        Args:
+            context_manager (ContextManager): Instancia del gestor de contexto.
+            config_manager (ConfigManager): Instancia del gestor de configuración.
+        """
         self.plugins = {}
-        self.context = {}  # Initialize conversation context
+        self.context_manager = context_manager # Use the passed ContextManager
+        self.config_manager = config_manager # Store for use if plugins need config at init or direct access
         self.nlp_es = None
         self.nlp_en = None
         self.advanced_nlp_processor = None # Added for Hugging Face
@@ -137,9 +144,39 @@ class IntentProcessor:
 
 
     def clear_context(self):
-        """Clears the conversation context."""
-        self.context = {}
-        logger.info("Contexto de conversación limpiado.")
+        """Clears the conversation context using the ContextManager."""
+        if self.context_manager:
+            self.context_manager.clear_all_context()
+            # logger.info("Contexto de conversación limpiado via ContextManager.") # Logged by ContextManager
+        else:
+            logger.warning("ContextManager no disponible en IntentProcessor para limpiar contexto.")
+
+    def _get_help_string(self) -> str:
+        """Generates a help string listing available plugin capabilities."""
+        if not self.plugins:
+            return "No hay plugins cargados actualmente."
+        
+        help_lines = ["Puedo ayudarte con lo siguiente:"]
+        for name, plugin_instance in self.plugins.items():
+            # Try to get a description from the plugin, otherwise just use the name
+            if hasattr(plugin_instance, 'get_description') and callable(plugin_instance.get_description):
+                try:
+                    description = plugin_instance.get_description()
+                    if description:
+                         help_lines.append(f"- {name.replace('_', ' ').capitalize()}: {description}")
+                    else: # Fallback if get_description returns empty
+                         help_lines.append(f"- {name.replace('_', ' ').capitalize()}")
+                except Exception as e:
+                    logger.error(f"Error getting description from plugin {name}: {e}")
+                    help_lines.append(f"- {name.replace('_', ' ').capitalize()} (Error al obtener descripción)")
+            else:
+                help_lines.append(f"- {name.replace('_', ' ').capitalize()}") # Basic help: plugin name
+        
+        # Add help for internal commands if any
+        help_lines.append("- Limpiar contexto (di 'limpiar contexto' u 'olvida todo')") # Corrected 'dice' to 'di'
+        help_lines.append("- Ayuda (di 'ayuda' o 'help')") # Corrected 'dice' to 'di'
+
+        return "\n".join(help_lines)
 
     def load_plugins(self):
         """Carga dinámicamente los plugins desde el directorio plugins"""
@@ -233,6 +270,36 @@ class IntentProcessor:
                      current_lang = "es" # Revert to default if EN also fails
         
         logger.info(f"Language for NLP processing: {current_lang} (Hint was: {lang_hint})")
+
+        # --- Help Command Handling (Early Exit) ---
+        if "ayuda" in text.lower() or "help" in text.lower():
+            help_response = self._get_help_string()
+            # Ensure 'doc' related entities are initialized if other parts of the return expect them
+            spacy_entities_for_output = []
+            if doc and doc.ents: # Check if doc and doc.ents exist
+                ruler_entity_labels_help = {"TIME", "DATE", "PHONE", "WORK_OF_ART"} 
+                for ent in doc.ents:
+                    source = 'ruler' if ent.label_ in ruler_entity_labels_help else 'spacy_model'
+                    spacy_entities_for_output.append({
+                        'text': ent.text, 'label': ent.label_,
+                        'start_char': ent.start_char, 'end_char': ent.end_char,
+                        'source': source
+                    })
+            
+            return {
+                "final_response": help_response,
+                "intent_label": "show_help",
+                "plugin_used": "IntentProcessorInternal",
+                "merged_entities": [], # No specific entities for help command itself
+                "sentiment": None, 
+                "qa_result": None,
+                "zero_shot_result": None, 
+                "current_lang": current_lang,
+                "empathetic_triggered": False, 
+                "raw_spacy_doc_entities": spacy_entities_for_output, # Provide empty or actual if doc was processed
+                "raw_hf_ner_entities": [] # No HF NER for help command
+            }
+        # --- End Help Command Handling ---
 
         # --- Advanced NLP (Hugging Face) Integration ---
         sentiment_result = None # Store sentiment for later use
@@ -333,10 +400,10 @@ class IntentProcessor:
         processed_text = text.lower()
 
         # --- Context Management Example (Simple: Clear context on 'clear context' command) ---
-        # More sophisticated context logic will be needed.
+        # This now calls the modified clear_context which uses ContextManager
         # Check raw text for clear context command before processing further
         if "limpiar contexto" in text.lower() or "olvida todo" in text.lower():
-             self.clear_context()
+             self.clear_context() 
              # Return the full dictionary structure even for this command
              return {
                  "final_response": "Entendido, he limpiado el contexto de nuestra conversación.",
@@ -359,10 +426,12 @@ class IntentProcessor:
             try:
                 can_handle_sig = inspect.signature(plugin_instance.can_handle)
                 can_handle_args = {}
+                current_processing_context = self.context_manager.get_context_for_processing() if self.context_manager else {}
+                
                 if 'entities' in can_handle_sig.parameters: can_handle_args['entities'] = merged_entities
                 if 'doc' in can_handle_sig.parameters and doc: can_handle_args['doc'] = doc
                 can_handle_args['text'] = processed_text # Always pass text
-                if 'context' in can_handle_sig.parameters: can_handle_args['context'] = self.context
+                if 'context' in can_handle_sig.parameters: can_handle_args['context'] = current_processing_context
 
                 if hasattr(plugin_instance, 'can_handle') and plugin_instance.can_handle(**can_handle_args):
                     candidate_plugins.append(name)
@@ -426,21 +495,26 @@ class IntentProcessor:
             try:
                 handle_sig = inspect.signature(plugin.handle)
                 handle_args = {}
+                current_processing_context = self.context_manager.get_context_for_processing() if self.context_manager else {}
+
                 if 'entities' in handle_sig.parameters: handle_args['entities'] = merged_entities
                 if 'doc' in handle_sig.parameters and doc: handle_args['doc'] = doc
                 handle_args['text'] = processed_text # Always pass text
-                if 'context' in handle_sig.parameters: handle_args['context'] = self.context
+                if 'context' in handle_sig.parameters: handle_args['context'] = current_processing_context
                 
                 plugin_used = name
                 handle_result = plugin.handle(**handle_args)
 
                 if isinstance(handle_result, tuple) and len(handle_result) == 2:
-                    response, updated_context = handle_result
-                    if isinstance(updated_context, dict):
-                        self.context.update(updated_context)
-                        logger.info(f"Plugin '{name}' updated context: {updated_context}")
-                    else:
-                        logger.warning(f"Plugin '{name}' returned non-dict context: {updated_context}")
+                    response, updated_context_dict = handle_result # Renamed for clarity
+                    if isinstance(updated_context_dict, dict) and self.context_manager:
+                        for key, value in updated_context_dict.items():
+                            self.context_manager.set_current_turn_data(key, value)
+                        logger.info(f"Plugin '{name}' updated context via ContextManager: {updated_context_dict}")
+                    elif not self.context_manager:
+                        logger.warning(f"Plugin '{name}' returned context but no ContextManager available in IntentProcessor.")
+                    else: # Not a dict
+                        logger.warning(f"Plugin '{name}' returned non-dict context: {updated_context_dict}")
                 else:
                     response = handle_result
                 intent_label_for_output = name
@@ -461,13 +535,19 @@ class IntentProcessor:
                is_question and self.advanced_nlp_processor and self.advanced_nlp_processor.qa_pipeline_en and current_lang == "en":
                 try:
                     # Improved dynamic context for QA
-                    qa_override_context = self.context.get('qa_context_override')
+                    current_processing_context = self.context_manager.get_context_for_processing() if self.context_manager else {}
+                    qa_override_context = current_processing_context.get('qa_context_override') # Use get_context_for_processing result
+
                     if qa_override_context:
                         context_for_qa = qa_override_context
                         logger.info(f"Using qa_context_override for QA: {context_for_qa}")
                     else:
-                        last_user = self.context.get('last_user_utterance', '')
-                        last_agent = self.context.get('last_assistant_response', '')
+                        # These now come from ContextManager's structured context
+                        last_user = current_processing_context.get('last_user_utterance', '')
+                        last_agent = current_processing_context.get('last_assistant_response', '')
+                        # previous_user = current_processing_context.get('previous_user_utterance', '') # Example if needed
+                        # previous_agent = current_processing_context.get('previous_assistant_response', '') # Example if needed
+
                         base_context = "Contexto General: JARVIS es un asistente virtual que usa Python, spaCy y Transformers. JARVIS is a voice assistant using Python, spaCy, and Transformers."
                         # Combine context, prioritizing recent interaction
                         context_parts = [part for part in [last_user, last_agent, text, base_context] if part] # Filter empty strings
@@ -539,21 +619,28 @@ class IntentProcessor:
                                 plugin = self.plugins[plugin_key]
 
                                 # Prepare arguments for handle (similar to primary loop)
+                                current_processing_context = self.context_manager.get_context_for_processing() if self.context_manager else {}
                                 handle_sig = inspect.signature(plugin.handle)
-                                handle_accepts_context = 'context' in handle_sig.parameters
-                                handle_accepts_doc = 'doc' in handle_sig.parameters
-                                handle_args = []
-                                if handle_accepts_doc and doc: handle_args.append(doc)
-                                else: handle_args.append(processed_text)
-                                if handle_accepts_context: handle_args.append(self.context)
-
+                                handle_args_zs = {} # Use dict for keyword args
+                                if 'entities' in handle_sig.parameters: handle_args_zs['entities'] = merged_entities
+                                if 'doc' in handle_sig.parameters and doc: handle_args_zs['doc'] = doc
+                                handle_args_zs['text'] = processed_text
+                                if 'context' in handle_sig.parameters: handle_args_zs['context'] = current_processing_context
+                                
                                 # Execute handle method
-                                handle_result = plugin.handle(*handle_args)
+                                handle_result = plugin.handle(**handle_args_zs)
 
                                 # Process result
                                 if isinstance(handle_result, tuple) and len(handle_result) == 2:
-                                    response, updated_context = handle_result
-                                    if isinstance(updated_context, dict): self.context.update(updated_context)
+                                    response, updated_context_dict = handle_result # Renamed
+                                    if isinstance(updated_context_dict, dict) and self.context_manager:
+                                        for key, value in updated_context_dict.items():
+                                            self.context_manager.set_current_turn_data(key, value)
+                                        logger.info(f"Plugin '{plugin_key}' (ZeroShot) updated context via ContextManager: {updated_context_dict}")
+                                    elif not self.context_manager:
+                                         logger.warning(f"Plugin '{plugin_key}' (ZeroShot) returned context but no ContextManager.")
+                                    else: # Not a dict
+                                         logger.warning(f"Plugin '{plugin_key}' (ZeroShot) returned non-dict context: {updated_context_dict}")
                                 else:
                                     response = handle_result
                                 plugin_used = f"{plugin_key} (ZeroShot fallback)"
@@ -580,15 +667,22 @@ class IntentProcessor:
                         try:
                             plugin = self.plugins["weather"]
                             # Pass the original text and context for now, plugin needs update later
-                            # TODO: Update weather plugin to handle entities directly
+                            current_processing_context = self.context_manager.get_context_for_processing() if self.context_manager else {}
                             handle_sig = inspect.signature(plugin.handle)
-                            handle_accepts_context = 'context' in handle_sig.parameters
-                            handle_args = (processed_text, self.context) if handle_accepts_context else (processed_text,)
-                            handle_result = plugin.handle(*handle_args)
+                            handle_args_spacy_fb = {}
+                            if 'entities' in handle_sig.parameters: handle_args_spacy_fb['entities'] = merged_entities # Or just doc.ents for this specific fallback
+                            if 'doc' in handle_sig.parameters and doc: handle_args_spacy_fb['doc'] = doc
+                            handle_args_spacy_fb['text'] = processed_text
+                            if 'context' in handle_sig.parameters: handle_args_spacy_fb['context'] = current_processing_context
+
+                            handle_result = plugin.handle(**handle_args_spacy_fb)
                             if isinstance(handle_result, tuple) and len(handle_result) == 2:
-                                response, updated_context = handle_result
-                                if isinstance(updated_context, dict):
-                                    self.context.update(updated_context)
+                                response, updated_context_dict = handle_result
+                                if isinstance(updated_context_dict, dict) and self.context_manager:
+                                     for key, value in updated_context_dict.items():
+                                        self.context_manager.set_current_turn_data(key, value)
+                                else: # No context manager or not a dict
+                                     pass # Logged by previous checks if needed
                             else:
                                 response = handle_result
                             plugin_used = "weather (spaCy fallback)"
@@ -607,14 +701,18 @@ class IntentProcessor:
                     if "weather" in self.plugins:
                         try:
                             plugin = self.plugins["weather"]
+                            current_processing_context = self.context_manager.get_context_for_processing() if self.context_manager else {}
                             handle_sig = inspect.signature(plugin.handle)
-                            handle_accepts_context = 'context' in handle_sig.parameters
-                            handle_args = (processed_text, self.context) if handle_accepts_context else (processed_text,)
-                            handle_result = plugin.handle(*handle_args)
+                            handle_args_kw_fb = {'text': processed_text}
+                            if 'context' in handle_sig.parameters: handle_args_kw_fb['context'] = current_processing_context
+                            # Keyword fallbacks usually don't get doc/entities unless they are more advanced
+
+                            handle_result = plugin.handle(**handle_args_kw_fb)
                             if isinstance(handle_result, tuple) and len(handle_result) == 2:
-                                response, updated_context = handle_result
-                                if isinstance(updated_context, dict):
-                                    self.context.update(updated_context)
+                                response, updated_context_dict = handle_result
+                                if isinstance(updated_context_dict, dict) and self.context_manager:
+                                    for key, value in updated_context_dict.items():
+                                        self.context_manager.set_current_turn_data(key, value)
                             else:
                                 response = handle_result
                             plugin_used = "weather (keyword fallback)"
@@ -627,14 +725,17 @@ class IntentProcessor:
                      if "news" in self.plugins:
                         try:
                             plugin = self.plugins["news"]
+                            current_processing_context = self.context_manager.get_context_for_processing() if self.context_manager else {}
                             handle_sig = inspect.signature(plugin.handle)
-                            handle_accepts_context = 'context' in handle_sig.parameters
-                            handle_args = (processed_text, self.context) if handle_accepts_context else (processed_text,)
-                            handle_result = plugin.handle(*handle_args)
+                            handle_args_kw_fb_news = {'text': processed_text}
+                            if 'context' in handle_sig.parameters: handle_args_kw_fb_news['context'] = current_processing_context
+                            
+                            handle_result = plugin.handle(**handle_args_kw_fb_news)
                             if isinstance(handle_result, tuple) and len(handle_result) == 2:
-                                response, updated_context = handle_result
-                                if isinstance(updated_context, dict):
-                                    self.context.update(updated_context)
+                                response, updated_context_dict = handle_result
+                                if isinstance(updated_context_dict, dict) and self.context_manager:
+                                    for key, value in updated_context_dict.items():
+                                        self.context_manager.set_current_turn_data(key, value)
                             else:
                                 response = handle_result
                             plugin_used = "news (keyword fallback)"
@@ -646,14 +747,17 @@ class IntentProcessor:
                      if "reminders" in self.plugins:
                         try:
                             plugin = self.plugins["reminders"]
+                            current_processing_context = self.context_manager.get_context_for_processing() if self.context_manager else {}
                             handle_sig = inspect.signature(plugin.handle)
-                            handle_accepts_context = 'context' in handle_sig.parameters
-                            handle_args = (processed_text, self.context) if handle_accepts_context else (processed_text,)
-                            handle_result = plugin.handle(*handle_args)
+                            handle_args_kw_fb_rem = {'text': processed_text}
+                            if 'context' in handle_sig.parameters: handle_args_kw_fb_rem['context'] = current_processing_context
+
+                            handle_result = plugin.handle(**handle_args_kw_fb_rem)
                             if isinstance(handle_result, tuple) and len(handle_result) == 2:
-                                response, updated_context = handle_result
-                                if isinstance(updated_context, dict):
-                                    self.context.update(updated_context)
+                                response, updated_context_dict = handle_result
+                                if isinstance(updated_context_dict, dict) and self.context_manager:
+                                    for key, value in updated_context_dict.items():
+                                        self.context_manager.set_current_turn_data(key, value)
                             else:
                                 response = handle_result
                             plugin_used = "reminders (keyword fallback)"
@@ -667,9 +771,24 @@ class IntentProcessor:
             final_response = response
             logger.info(f"Plugin '{plugin_used}' generated response for '{text}'.")
         else:
-            # Default response if no plugin or fallback worked
-            final_response = "Lo siento, no sé cómo ayudarte con eso todavía."
-            logger.warning(f"No plugin or fallback found for: '{text}'. Using default response.")
+            # --- Final Fallback: General Chat (DialoGPT) ---
+            if self.advanced_nlp_processor and self.advanced_nlp_processor.text_generator:
+                logger.info(f"No plugin handled '{text}'. Attempting general chat fallback.")
+                chat_response = self.advanced_nlp_processor.generate_chat_response(text)
+                if chat_response and chat_response != "Lo siento, mi capacidad de chat general no está disponible en este momento." \
+                   and chat_response != "No estoy seguro de cómo responder a eso." \
+                   and chat_response != "No se me ocurre qué decir.":
+                    final_response = chat_response
+                    plugin_used = "GeneralChatFallback" # Indicate this was a chat fallback
+                    intent_label_for_output = "general_chat"
+                    logger.info(f"General chat fallback provided response: '{final_response}'")
+                else:
+                    logger.warning(f"General chat fallback did not provide a suitable response for '{text}'.")
+            
+            if final_response is None:
+                # Default response if no plugin or any fallback (including chat) worked
+                final_response = "Lo siento, no sé cómo ayudarte con eso todavía."
+                logger.warning(f"No plugin or any fallback found for: '{text}'. Using default response.")
 
         # Modify response based on sentiment (Example)
         if sentiment_result and not sentiment_result.get("error"):
@@ -687,8 +806,10 @@ class IntentProcessor:
                       final_response = empathetic_phrase + final_response
                       empathetic_triggered = True # Ensure this flag is set
 
-        logger.info(f"Final response for '{text}'. Final Context: {self.context}")
-        # TODO: Store current 'text' as 'last_user_utterance' and 'final_response' as 'last_assistant_response' in context for next turn. This should happen in the main loop after calling process().
+        final_context_for_log = self.context_manager.get_context_for_processing() if self.context_manager else "ContextManager not available"
+        logger.info(f"Final response for '{text}'. Final Context (from ContextManager): {final_context_for_log}")
+        # Note: add_utterance for user and assistant response is now handled by the caller (e.g., cli_interface)
+        # using the context_manager instance.
 
         # Construct the detailed output dictionary
         output_data = {

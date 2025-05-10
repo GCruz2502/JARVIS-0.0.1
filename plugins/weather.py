@@ -1,17 +1,24 @@
 # jarvis/plugins/weather.py
 import requests
-import os
 import logging
 from spacy.tokens import Doc # Added for type hinting
+from utils.config_manager import ConfigManager # Import ConfigManager
 
 logger = logging.getLogger(__name__)
+
+WEATHER_API_KEY_NAME = "OPENWEATHER_API_KEY" # Consistent with report_generator.py
 
 class Plugin:
     def __init__(self):
         """Inicializa el plugin de clima"""
-        self.api_key = os.getenv("WEATHER_API_KEY")
+        self.config_manager = ConfigManager() # Use ConfigManager
+        self.api_key = self.config_manager.get_env_variable(WEATHER_API_KEY_NAME)
         if not self.api_key:
-            logger.warning("No se ha configurado la API key para el clima")
+            logger.warning(f"No se ha configurado la API key para el clima ({WEATHER_API_KEY_NAME}). El plugin podría no funcionar.")
+        logger.info("Plugin WeatherPlugin inicializado.")
+
+    def get_description(self) -> str:
+        return "Consulta el estado del tiempo actual para una ciudad."
 
     # Keep can_handle simple for now, or update to check entities if needed
     def can_handle(self, text: str, doc: Doc = None, context: dict = None, entities: list = None) -> bool: # Added entities
@@ -57,17 +64,16 @@ class Plugin:
             str: Información sobre el clima o un mensaje de error
         """
         if not self.api_key:
-            return "Lo siento, no tengo configurada la API del clima."
+            return "Lo siento, la API key para el servicio de clima no está configurada."
 
         city = None
         
         # 1. Prioritize merged entities if available
         if entities:
             for ent in entities:
-                # Look for GPE (GeoPolitical Entity) or LOC (Location)
                 if ent['label'] in ["GPE", "LOC"]:
                     city = ent['text']
-                    logger.info(f"Ciudad extraída de merged_entities: {city} (Label: {ent['label']}, Source: {ent['source']})")
+                    logger.info(f"Ciudad extraída de merged_entities: {city} (Label: {ent['label']}, Source: {ent.get('source', 'N/A')})")
                     break 
         
         # 2. Fallback to spaCy doc.ents if merged_entities didn't yield a city
@@ -83,32 +89,58 @@ class Plugin:
         if not city:
             logger.info("No se encontró ciudad en spaCy Doc, intentando regex sobre el texto.")
             import re
-            # Regex mejorada para capturar ciudades con múltiples palabras y después de "en", "de", "para"
             city_match = re.search(r"(?:clima|tiempo|temperatura)\s+(?:en|de|para)\s+([A-Za-záéíóúñÁÉÍÓÚÑ\s]+)", text, re.IGNORECASE)
             if city_match:
                 city = city_match.group(1).strip()
                 logger.info(f"Ciudad extraída con regex: {city}")
 
         if not city:
-            # Si no se detecta ciudad, usar una por defecto o pedir aclaración
-            logger.info("No se pudo extraer la ciudad ni con spaCy ni con regex.")
-            return "¿En qué ciudad quieres saber el clima?"
+            logger.info("No se pudo extraer la ciudad.")
+            # Considerar si el contexto tiene una ciudad previa
+            if context and context.get('last_city_queried'):
+                 city = context.get('last_city_queried')
+                 logger.info(f"Usando última ciudad consultada del contexto: {city}")
+            else:
+                 return "¿Para qué ciudad te gustaría saber el clima?"
         
         try:
-            # Llamada a la API de OpenWeatherMap
-            url = f"http://api.openweathermap.org/data/2.5/weather?q={city}&appid={self.api_key}&units=metric&lang=es"
-            response = requests.get(url)
+            base_url = self.config_manager.get_app_setting("openweathermap_base_url", "http://api.openweathermap.org/data/2.5/weather?")
+            lang_code = self.config_manager.get_app_setting("weather_plugin_lang", "es")
+            units = self.config_manager.get_app_setting("weather_plugin_units", "metric")
+
+            complete_url = f"{base_url}q={city}&appid={self.api_key}&units={units}&lang={lang_code}"
+            logger.debug(f"Consultando OpenWeatherMap: {complete_url.replace(self.api_key, '***')}")
             
-            if response.status_code == 200:
-                weather_data = response.json()
-                temp = weather_data["main"]["temp"]
-                condition = weather_data["weather"][0]["description"]
-                
-                return f"En {city} hay {condition} con una temperatura de {temp}°C."
-            else:
-                logger.error(f"Error en API del clima: {response.status_code}")
-                return f"Lo siento, no pude obtener el clima para {city}."
-                
+            response = requests.get(complete_url, timeout=10)
+            response.raise_for_status() # Levanta HTTPError para respuestas 4XX/5XX
+            weather_data = response.json()
+            
+            if weather_data.get("cod") != 200 and weather_data.get("cod") != "200": # API a veces retorna "200" como string
+                # Manejar errores específicos de la API si es necesario
+                error_message = weather_data.get("message", "Ciudad no encontrada o error de API.")
+                logger.warning(f"Error de API OpenWeatherMap para {city}: {error_message} (Code: {weather_data.get('cod')})")
+                return f"No pude encontrar el clima para {city}. {error_message}"
+
+            main = weather_data.get("main", {})
+            temperature = main.get("temp", "N/A")
+            humidity = main.get("humidity", "N/A")
+            weather_description_list = weather_data.get("weather", [{}])
+            weather_description = weather_description_list[0].get("description", "N/A") if weather_description_list else "N/A"
+            
+            # Actualizar contexto con la ciudad consultada (ejemplo)
+            updated_context = {"last_city_queried": city}
+
+            weather_report = (f"En {city}, la temperatura es de {temperature}°C con {weather_description}. "
+                              f"La humedad es del {humidity}%.")
+            logger.info(f"Clima obtenido para {city}: {weather_report}")
+            return weather_report, updated_context # Devolver también el contexto actualizado
+
+        except requests.Timeout:
+            logger.error(f"Timeout al contactar OpenWeatherMap para {city}.")
+            return "El servicio de clima tardó demasiado en responder."
+        except requests.RequestException as e:
+            logger.error(f"Error de conexión al obtener clima para {city}: {e}")
+            return f"Error de conexión al obtener el clima para {city}."
         except Exception as e:
-            logger.error(f"Error al consultar el clima: {str(e)}")
-            return "Hubo un problema al obtener la información del clima."
+            logger.error(f"Error inesperado en plugin de clima para {city}: {e}", exc_info=True)
+            return "Lo siento, ocurrió un error inesperado al procesar la información del clima."
