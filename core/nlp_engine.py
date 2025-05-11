@@ -111,11 +111,12 @@ class AdvancedNLPProcessor:
 
         # Initialize Text Generation Pipeline (DialoGPT)
         try:
-            logger.info("Initializing Hugging Face text generation pipeline (DialoGPT-medium)...")
-            self.text_generator = pipeline("text-generation", model="microsoft/DialoGPT-medium")
-            logger.info("Hugging Face text generation pipeline initialized successfully.")
+            logger.info("Initializing Hugging Face text generation pipeline (Llama-3-8B-Instruct-hf)...")
+            # Ensure you are logged into Hugging Face CLI and have accepted Llama 3 terms
+            self.text_generator = pipeline("text-generation", model="meta-llama/Llama-3-8B-Instruct-hf", device_map="auto") # device_map="auto" helps with large models
+            logger.info("Hugging Face text generation pipeline (Llama-3-8B-Instruct-hf) initialized successfully.")
         except Exception as e:
-            logger.error(f"Failed to initialize Hugging Face text generation pipeline: {e}", exc_info=True)
+            logger.error(f"Failed to initialize Hugging Face text generation pipeline (Llama-3-8B-Instruct-hf): {e}", exc_info=True)
             # TRANSFORMERS_AVAILABLE in report_generator.py was a global flag.
             # Here, self.text_generator will remain None if it fails.
 

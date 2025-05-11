@@ -1,6 +1,7 @@
 # jarvis/plugins/weather.py
 import requests
 import logging
+import re # Moved from handle method
 from spacy.tokens import Doc # Added for type hinting
 from utils.config_manager import ConfigManager # Import ConfigManager
 
@@ -88,7 +89,7 @@ class Plugin:
         # 3. Fallback to regex if still no city found
         if not city:
             logger.info("No se encontró ciudad en spaCy Doc, intentando regex sobre el texto.")
-            import re
+            # import re # Moved to top
             city_match = re.search(r"(?:clima|tiempo|temperatura)\s+(?:en|de|para)\s+([A-Za-záéíóúñÁÉÍÓÚÑ\s]+)", text, re.IGNORECASE)
             if city_match:
                 city = city_match.group(1).strip()

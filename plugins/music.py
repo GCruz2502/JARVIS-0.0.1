@@ -1,6 +1,5 @@
 # plugins/music.py
 import logging
-import os # os might not be needed if not using os.getenv directly
 import re
 import webbrowser # For opening URLs
 from spacy.tokens import Doc

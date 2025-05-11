@@ -29,9 +29,9 @@ class ConfigManager:
             self.project_root = project_root_dir
 
         self.env_path = self.project_root / ".env"
-        # Estos nombres de archivo son ejemplos; ajústalos si es necesario.
-        self.app_config_path = self.project_root / "data" / "app_config.json"
-        self.user_data_path = self.project_root / "data" / "user_data.json"
+        # Corrected file names to match actual files in data/
+        self.app_config_path = self.project_root / "data" / "application_config.json"
+        self.user_data_path = self.project_root / "data" / "runtime_data.json"
 
         self._load_env()
         self.app_config = self._load_json_config(self.app_config_path, "Application Configuration")
@@ -79,11 +79,11 @@ class ConfigManager:
         return self.user_data.get(key, default)
 
     def save_user_data(self, key: str, value) -> bool:
-        """Guarda un par clave-valor en el archivo de datos de usuario (user_data.json)."""
+        """Guarda un par clave-valor en el archivo de datos de usuario (runtime_data.json)."""
         self.user_data[key] = value
         try:
             # Asegurarse que el directorio data exista
-            self.user_data_path.parent.mkdir(parents=True, exist_ok=True)
+            self.user_data_path.parent.mkdir(parents=True, exist_ok=True) # user_data_path now points to runtime_data.json
             with open(self.user_data_path, "w", encoding='utf-8') as f:
                 json.dump(self.user_data, f, indent=4, ensure_ascii=False)
             logger.info(f"Dato de usuario '{key}' guardado en '{self.user_data_path}'.")

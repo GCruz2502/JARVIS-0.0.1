@@ -2,8 +2,8 @@ import json
 import os
 import logging
 
-logging.basicConfig(level=logging.INFO, 
-                    format='%(asctime)s - %(levelname)s - %(message)s')
+# logging.basicConfig(level=logging.INFO, 
+#                     format='%(asctime)s - %(levelname)s - %(message)s') # Removed: Logging should be configured by main.py
 logger = logging.getLogger(__name__)
 
 def collect_data(command, response):

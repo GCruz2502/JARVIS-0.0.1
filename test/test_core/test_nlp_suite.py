@@ -10,12 +10,26 @@ if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
 from core.intent_processor import IntentProcessor
-from core.advanced_nlp import AdvancedNLPProcessor
+from core.nlp_engine import AdvancedNLPProcessor # Corrected import path
 # from config.settings import load_config # Removed, config is loaded on import by modules
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
+
+# Mock classes for dependencies for IntentProcessor
+class MockConfigManager:
+    def get_app_setting(self, key, default=None): return default
+    def get_env_variable(self, key, default=None): return default
+    def __init__(self, project_root_dir=None): pass
+
+class MockContextManager:
+    def __init__(self, max_history_len=0): self.current_turn_data = {}
+    def get_context_for_processing(self): return {}
+    def add_utterance(self, speaker, text): pass
+    def clear_all_context(self): self.current_turn_data.clear()
+    def set_current_turn_data(self, key, value): self.current_turn_data[key] = value
+    def get_current_turn_data(self, key, default=None): return self.current_turn_data.get(key, default)
 
 # --- Test Cases Definition ---
 # Each test case is a dictionary.
@@ -252,11 +266,10 @@ TEST_CASES = [
 class NLPEvaluationSuite:
     def __init__(self):
         logger.info("Initializing NLP Evaluation Suite...")
-        # Configuration (API keys etc.) is loaded when config.settings is imported
-        # by modules like AdvancedNLPProcessor or plugins.
-        # No explicit config loading or passing needed here for now for IntentProcessor.
-        self.intent_processor = IntentProcessor()
-        logger.info("IntentProcessor initialized.")
+        mock_config = MockConfigManager()
+        mock_context = MockContextManager()
+        self.intent_processor = IntentProcessor(context_manager=mock_context, config_manager=mock_config)
+        logger.info("IntentProcessor initialized with mock managers.")
 
     def run_test_case(self, test_case_data):
         logger.info(f"--- Running Test Case: {test_case_data['id']} ---")
@@ -295,7 +308,12 @@ class NLPEvaluationSuite:
             
             # Actual call to the updated IntentProcessor.process method
             # Set context for the processor instance for this specific test input
-            self.intent_processor.context = current_context 
+            # The IntentProcessor's context_manager is already set. We need to set data on IT.
+            if self.intent_processor.context_manager:
+                self.intent_processor.context_manager.clear_all_context() # Clear previous test's context
+                if input_data.get("qa_context"):
+                    self.intent_processor.context_manager.set_current_turn_data("qa_context_override", input_data["qa_context"])
+            
             processed_output = self.intent_processor.process(input_data['text'], lang_hint=input_data['lang'])
             # --- End Actual Call ---
 
