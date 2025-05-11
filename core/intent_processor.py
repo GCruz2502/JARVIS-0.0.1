@@ -771,19 +771,31 @@ class IntentProcessor:
             final_response = response
             logger.info(f"Plugin '{plugin_used}' generated response for '{text}'.")
         else:
-            # --- Final Fallback: General Chat (DialoGPT) ---
-            if self.advanced_nlp_processor and self.advanced_nlp_processor.text_generator:
-                logger.info(f"No plugin handled '{text}'. Attempting general chat fallback.")
-                chat_response = self.advanced_nlp_processor.generate_chat_response(text)
-                if chat_response and chat_response != "Lo siento, mi capacidad de chat general no está disponible en este momento." \
-                   and chat_response != "No estoy seguro de cómo responder a eso." \
-                   and chat_response != "No se me ocurre qué decir.":
+            # --- Final Fallback: General Chat (Now via Ollama) ---
+            if self.advanced_nlp_processor: # Check if advanced_nlp_processor itself is initialized
+                logger.info(f"No plugin handled '{text}'. Attempting general chat fallback via Ollama.")
+                # The model_tag used by Ollama can be passed if needed, or use default from generate_chat_response
+                # Example: chat_response = self.advanced_nlp_processor.generate_chat_response(text, model_tag="llama3:8b-instruct")
+                chat_response = self.advanced_nlp_processor.generate_chat_response(text) # Uses default model_tag from method
+                
+                # Standardized fallback messages from Ollama method if it fails or gives empty response
+                standard_fallback_messages = {
+                    "Lo siento, mi capacidad de chat general no está disponible en este momento.",
+                    "No estoy seguro de cómo responder a eso.",
+                    "No se me ocurre qué decir.",
+                    "Lo siento, el servicio de chat tardó demasiado en responder.",
+                    "Lo siento, no pude conectarme al servicio de chat. Asegúrate de que Ollama esté en ejecución.",
+                    "Lo siento, tuve un problema al comunicarme con el servicio de chat.",
+                    "Lo siento, tuve un problema inesperado al generar una respuesta de chat."
+                }
+
+                if chat_response and chat_response not in standard_fallback_messages:
                     final_response = chat_response
-                    plugin_used = "GeneralChatFallback" # Indicate this was a chat fallback
+                    plugin_used = "GeneralChatFallback_Ollama" 
                     intent_label_for_output = "general_chat"
-                    logger.info(f"General chat fallback provided response: '{final_response}'")
+                    logger.info(f"General chat fallback (Ollama) provided response: '{final_response}'")
                 else:
-                    logger.warning(f"General chat fallback did not provide a suitable response for '{text}'.")
+                    logger.warning(f"General chat fallback (Ollama) did not provide a suitable response for '{text}'. Response: '{chat_response}'")
             
             if final_response is None:
                 # Default response if no plugin or any fallback (including chat) worked

@@ -1,5 +1,7 @@
 # core/nlp_engine.py
 import logging
+import requests # For Ollama API call
+import json # For Ollama API call
 from transformers import pipeline, AutoModelForSequenceClassification, AutoTokenizer
 
 import os
@@ -40,7 +42,7 @@ class AdvancedNLPProcessor:
         self.qa_pipeline_es = None
         self.zero_shot_classifier = None
         self.ner_pipeline = None
-        self.text_generator = None # For DialoGPT
+        # self.text_generator = None # Will be removed, Ollama used instead
         
         # Initialize English Sentiment Analysis Pipeline
         try:
@@ -110,15 +112,16 @@ class AdvancedNLPProcessor:
             logger.error(f"Failed to initialize Hugging Face NER pipeline: {e}", exc_info=True)
 
         # Initialize Text Generation Pipeline (DialoGPT)
-        try:
-            logger.info("Initializing Hugging Face text generation pipeline (Llama-3-8B-Instruct-hf)...")
-            # Ensure you are logged into Hugging Face CLI and have accepted Llama 3 terms
-            self.text_generator = pipeline("text-generation", model="meta-llama/Llama-3-8B-Instruct-hf", device_map="auto") # device_map="auto" helps with large models
-            logger.info("Hugging Face text generation pipeline (Llama-3-8B-Instruct-hf) initialized successfully.")
-        except Exception as e:
-            logger.error(f"Failed to initialize Hugging Face text generation pipeline (Llama-3-8B-Instruct-hf): {e}", exc_info=True)
-            # TRANSFORMERS_AVAILABLE in report_generator.py was a global flag.
-            # Here, self.text_generator will remain None if it fails.
+        # try:
+        #     logger.info("Initializing Hugging Face text generation pipeline (Llama-3-8B-Instruct-hf)...")
+        #     # Ensure you are logged into Hugging Face CLI and have accepted Llama 3 terms
+        #     self.text_generator = pipeline("text-generation", model="meta-llama/Llama-3-8B-Instruct-hf", device_map="auto") # device_map="auto" helps with large models
+        #     logger.info("Hugging Face text generation pipeline (Llama-3-8B-Instruct-hf) initialized successfully.")
+        # except Exception as e:
+        #     logger.error(f"Failed to initialize Hugging Face text generation pipeline (Llama-3-8B-Instruct-hf): {e}", exc_info=True)
+        #     # TRANSFORMERS_AVAILABLE in report_generator.py was a global flag.
+        #     # Here, self.text_generator will remain None if it fails.
+        # Text generator pipeline removed, will use Ollama API
 
     def analyze_sentiment(self, text: str, lang: str = "en") -> dict:
         analyzer = None
@@ -188,46 +191,55 @@ class AdvancedNLPProcessor:
             logger.error(f"Error during HF NER entity extraction for text '{text}': {e}", exc_info=True)
             return []
 
-    def generate_chat_response(self, query_text: str, max_length: int = 70) -> str: # Increased max_length slightly
+    def generate_chat_response(self, query_text: str, model_tag: str = "llama3.1:8b") -> str: # Updated default model tag
         """
-        Generates a conversational response using a text generation model.
+        Generates a conversational response using Llama 3 via Ollama API.
+        Args:
+            query_text (str): The user's input.
+            model_tag (str): The Ollama model tag to use (e.g., "llama3:8b-instruct").
+        Returns:
+            str: The generated response or an error message.
         """
-        if not self.text_generator:
-            logger.warning("Text generation pipeline (DialoGPT) not available.")
-            return "Lo siento, mi capacidad de chat general no está disponible en este momento."
+        ollama_api_url = "http://localhost:11434/api/chat"
+        logger.debug(f"Sending query to Ollama ({model_tag}): '{query_text}'")
+
+        payload = {
+            "model": model_tag,
+            "messages": [
+                {"role": "user", "content": query_text}
+            ],
+            "stream": False # We want the full response at once
+        }
 
         try:
-            logger.debug(f"Generating chat response for: '{query_text}'")
-            # DialoGPT often includes the input in its output, so we might need to clean it.
-            # It also works best as a multi-turn model, but here we use it for single response.
-            # For more complex chat, a history/context would be passed.
-            response_sequences = self.text_generator(query_text, max_length=max_length, num_return_sequences=1, pad_token_id=50256) # pad_token_id for gpt2-like models
+            response = requests.post(ollama_api_url, json=payload, timeout=180) # Increased timeout to 180 seconds
+            response.raise_for_status()  # Raise an exception for HTTP errors
             
-            if response_sequences and response_sequences[0]:
-                generated_text = response_sequences[0]['generated_text']
-                
-                # Clean up response: remove the input query if it's prepended
-                # This is common with some conversational models.
-                if generated_text.startswith(query_text):
-                    cleaned_response = generated_text[len(query_text):].strip()
-                    # Sometimes it might still have an assistant prefix if it's mimicking dialogue turns
-                    # This part might need model-specific fine-tuning for cleaning.
-                else:
-                    cleaned_response = generated_text
-                
-                # If after cleaning, the response is empty, or too short, provide a fallback.
-                if not cleaned_response or len(cleaned_response) < 5 : # Arbitrary short length
-                    logger.info("DialoGPT generated an empty or too short response after cleaning. Using fallback.")
-                    return "No estoy seguro de cómo responder a eso." 
-                
-                logger.info(f"DialoGPT generated response: '{cleaned_response}'")
-                return cleaned_response
+            response_data = response.json()
+            
+            if response_data and "message" in response_data and "content" in response_data["message"]:
+                assistant_response = response_data["message"]["content"].strip()
+                logger.info(f"Ollama ({model_tag}) generated response: '{assistant_response}'")
+                if not assistant_response or len(assistant_response) < 5:
+                    logger.info(f"Ollama ({model_tag}) generated an empty or too short response. Using fallback.")
+                    return "No estoy seguro de cómo responder a eso."
+                return assistant_response
             else:
-                logger.warning("Text generation pipeline returned no sequences.")
+                logger.warning(f"Ollama ({model_tag}) response format unexpected: {response_data}")
                 return "No se me ocurre qué decir."
+
+        except requests.exceptions.Timeout:
+            logger.error(f"Timeout connecting to Ollama API at {ollama_api_url} for model {model_tag}.")
+            return "Lo siento, el servicio de chat tardó demasiado en responder."
+        except requests.exceptions.ConnectionError:
+            logger.error(f"Connection error with Ollama API at {ollama_api_url}. Is Ollama running?")
+            return "Lo siento, no pude conectarme al servicio de chat. Asegúrate de que Ollama esté en ejecución."
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Error during Ollama API request for model {model_tag}: {e}", exc_info=True)
+            return "Lo siento, tuve un problema al comunicarme con el servicio de chat."
         except Exception as e:
-            logger.error(f"Error during text generation for query '{query_text}': {e}", exc_info=True)
-            return "Lo siento, tuve un problema al generar una respuesta de chat."
+            logger.error(f"Unexpected error during Ollama chat response generation (model {model_tag}): {e}", exc_info=True)
+            return "Lo siento, tuve un problema inesperado al generar una respuesta de chat."
 
 # --- Content from core/ml_models.py ---
 def train_sklearn_command_model():

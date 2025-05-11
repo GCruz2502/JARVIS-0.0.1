@@ -261,6 +261,25 @@ TEST_CASES = [
     # - More complex entity merging scenarios (Ruler vs HF vs spaCy base)
     # - Different languages and phrasings for each category
     # - Edge cases and potential failure points
+    {
+        "id": "TC012_Ollama_Fallback_ES",
+        "description": "Test general chat fallback via Ollama with a generic Spanish phrase.",
+        "inputs": [
+            {
+                "lang": "es",
+                "text": "cuéntame algo interesante sobre el universo",
+                "expected_intent_label": "general_chat", # Expecting the fallback to be identified
+                "expected_entities": [], # No specific entities expected for this generic input
+                "expected_sentiment": None, # Sentiment might vary, not strictly testing it here
+                "is_question": True, # It's a question
+                "qa_context": None,
+                "expected_qa_answer_part": None, # Not expecting specific QA
+                "expected_empathetic_response": False,
+                # We will also check 'plugin_used' for 'GeneralChatFallback_Ollama'
+                # and that 'final_response' is not an error message.
+            }
+        ]
+    },
 ]
 
 class NLPEvaluationSuite:
@@ -324,6 +343,8 @@ class NLPEvaluationSuite:
             actual_qa_data = processed_output.get("qa_result") # Get the full QA dict
             actual_qa_answer = actual_qa_data.get("answer") if actual_qa_data else None
             actual_empathetic_response = processed_output.get("empathetic_triggered", False) # Use the direct flag
+            actual_plugin_used = processed_output.get("plugin_used")
+            actual_final_response = processed_output.get("final_response")
 
 
             # --- Comparisons ---
@@ -363,6 +384,17 @@ class NLPEvaluationSuite:
             # Empathetic response match is direct comparison of boolean flags
             empathetic_match = actual_empathetic_response == input_data["expected_empathetic_response"]
 
+            # Specific checks for Ollama fallback test
+            ollama_fallback_check_passed = None
+            if input_data.get("expected_intent_label") == "general_chat":
+                ollama_fallback_check_passed = actual_plugin_used == "GeneralChatFallback_Ollama" and \
+                                               actual_final_response is not None and \
+                                               "Lo siento" not in actual_final_response and \
+                                               "No pude" not in actual_final_response and \
+                                               "No estoy seguro" not in actual_final_response
+                if ollama_fallback_check_passed is False: # If it failed, log why
+                    logger.warning(f"TC012 Ollama Fallback Check FAILED: plugin_used='{actual_plugin_used}', final_response='{actual_final_response}'")
+
 
             result_summary = {
                 "input_text": input_data["text"],
@@ -382,6 +414,7 @@ class NLPEvaluationSuite:
                 "empathetic_expected": input_data["expected_empathetic_response"],
                 "empathetic_actual": actual_empathetic_response,
                 "empathetic_match": empathetic_match,
+                "ollama_fallback_check_passed": ollama_fallback_check_passed, # Added for TC012
                 "full_processed_output": processed_output # Keep for debugging details
             }
             results.append(result_summary)
@@ -408,6 +441,9 @@ class NLPEvaluationSuite:
         successful_sentiments = sum(1 for r in all_test_results if r['sentiment_match'])
         successful_qa = sum(1 for r in all_test_results if r['qa_match'])
         successful_empathetic = sum(1 for r in all_test_results if r['empathetic_match'])
+        # Summarize Ollama fallback checks
+        ollama_tests = [r for r in all_test_results if "ollama_fallback_check_passed" in r and r["ollama_fallback_check_passed"] is not None]
+        successful_ollama_fallbacks = sum(1 for r in ollama_tests if r['ollama_fallback_check_passed'])
 
         logger.info("======== NLP Evaluation Suite Summary ========")
         logger.info(f"Total Inputs Processed: {num_inputs_tested}")
@@ -416,6 +452,8 @@ class NLPEvaluationSuite:
         logger.info(f"Sentiment Matches: {successful_sentiments}/{num_inputs_tested}")
         logger.info(f"QA Matches: {successful_qa}/{num_inputs_tested}")
         logger.info(f"Empathetic Response Matches: {successful_empathetic}/{num_inputs_tested}")
+        if ollama_tests:
+            logger.info(f"Ollama Fallback Checks Passed: {successful_ollama_fallbacks}/{len(ollama_tests)}")
         logger.info("==============================================")
         
         # You could save all_test_results to a JSON file for detailed review
