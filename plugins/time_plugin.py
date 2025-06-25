@@ -22,26 +22,21 @@ class Plugin:
         Handles the request to get the current date.
         """
         try:
-            today = datetime.date.today()
+            now = datetime.date.now()
             current_lang = "es" # Default
             if context and context.get("current_conversation_lang") == "en": # Check context from CLI
                 current_lang = "en"
 
+            # +++ CORRECTED CODE FOR TIME +++
+            time_str = now.strftime("%I:%M %p") # e.g., 04:45 PM
             if current_lang == "es":
-                day_names_es = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"]
-                month_names_es = ["enero", "febrero", "marzo", "abril", "mayo", "junio", 
-                                  "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"]
-                
-                day_name = day_names_es[today.weekday()]
-                month_name = month_names_es[today.month - 1]
-                date_str = f"{day_name}, {today.day} de {month_name} de {today.year}"
-                response = f"Hoy es {date_str}."
+                response = f"Son las {time_str}."
             else: # English
-                date_str = today.strftime("%A, %B %d, %Y") 
-                response = f"Today is {date_str}."
-            
-            logger.info(f"Respondiendo con la fecha actual: {response}")
+                response = f"The current time is {time_str}."
+            # +++++++++++++++++++++++++++++++
+
+            logger.info(f"Respondiendo con la hora actual: {response}")
             return response
         except Exception as e:
-            logger.error(f"Error al obtener la fecha: {e}", exc_info=True)
-            return "Lo siento, no pude obtener la fecha en este momento."
+            logger.error(f"Error al obtener la hora: {e}", exc_info=True)
+            return "Lo siento, no pude obtener la hora en este momento."
