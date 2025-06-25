@@ -11,6 +11,9 @@ from utils.config_manager import ConfigManager
 from core.context_manager import ContextManager
 from core.intent_processor import IntentProcessor
 from ui.cli_interface import start_cli
+from utils.database_handler import create_connection, create_table, collect_data  # Import database functions
+import json
+from datetime import datetime, timezone
 
 # Obtener un logger para este módulo (después de que setup_logging haya sido llamado)
 # Esto se hace aquí para que el logger esté disponible globalmente en este script si es necesario.
@@ -21,6 +24,41 @@ def main():
     """
     Función principal para inicializar y ejecutar JARVIS.
     """
+    # 0. Initialize Database (Before anything else)
+    try:
+        conn = create_connection()
+        if conn:
+            create_table(conn)
+            conn.close()
+            logger.info("Database initialized successfully.")
+
+            # Add some dummy data for testing
+            conn = create_connection()
+            if conn:
+                try:
+                    timestamp = datetime.now(timezone.utc).isoformat()
+                    user_input = "Hola JARVIS"
+                    intent = "greeting"
+                    entities = json.dumps([{"text": "JARVIS", "type": "PERSON"}])
+                    sentiment = json.dumps({"label": "NEU", "score": 0.8})
+                    plugin_used = "IntentProcessorInternal"
+                    response = "Hola! ¿Cómo puedo ayudarte hoy?"
+                    success = 1
+                    language = "es"
+
+                    if collect_data(timestamp, user_input, intent, entities, sentiment, plugin_used, response, success, language):
+                        logger.info("Dummy interaction data saved successfully.")
+                    else:
+                        logger.warning("Failed to save dummy interaction data.")
+                except Exception as e:
+                    logger.error(f"Error adding dummy data: {e}")
+                finally:
+                    conn.close()
+    except Exception as e:
+        logger.critical(f"Error initializing database: {e}", exc_info=True)
+        print(f"Error crítico al iniciar la base de datos: {e}. JARVIS no puede continuar.")
+        return
+
     # 1. Configurar el logging
     # Se puede hacer configurable a través de ConfigManager si se desea.
     # Por ejemplo, leer el nivel de log y la ruta del archivo de log desde app_config.json.
