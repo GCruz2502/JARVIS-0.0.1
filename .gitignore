@@ -158,3 +158,6 @@ models/vosk-model-es-0.42/
 # Memory Bank - Personal use, not for repository
 memory-bank/
 memory-bank/activeContext.md
+
+# Gemini CLI
+gemini.md

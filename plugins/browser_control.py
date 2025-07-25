@@ -3,56 +3,98 @@ Plugin para controlar el navegador web.
 """
 import webbrowser
 import logging
-# Import ConfigManager. Asegúrate que utils está en PYTHONPATH o usa rutas relativas si es necesario.
-# from ..utils.config_manager import ConfigManager # Ejemplo de ruta relativa si plugins y utils son hermanos
-# Por ahora, asumimos que 'utils' es directamente importable.
+import re
+from urllib.parse import quote_plus
 from utils.config_manager import ConfigManager
-
 
 logger = logging.getLogger(__name__)
 
+RESPONSE_TEXTS = {
+    "es": {
+        "description": "Abre una URL o busca en la web.",
+        "opening_url": "Abriendo la página {url}.",
+        "searching_for": "Buscando '{query}' en la web.",
+        "url_not_found": "No pude encontrar una URL para abrir. Abriendo tu página de inicio.",
+        "query_not_found": "No entendí qué buscar. Abriendo el buscador.",
+        "open_error": "Lo siento, ocurrió un error al intentar abrir el navegador."
+    },
+    "en": {
+        "description": "Opens a URL or searches the web.",
+        "opening_url": "Opening the page {url}.",
+        "searching_for": "Searching the web for '{query}'.",
+        "url_not_found": "I couldn't find a URL to open. Opening your home page.",
+        "query_not_found": "I didn't understand what to search for. Opening the search engine.",
+        "open_error": "Sorry, an error occurred while trying to open the browser."
+    }
+}
+
+# --- IMPROVED: More robust helper function ---
+def _extract_search_query(text: str) -> str:
+    """Removes common trigger words and phrases to get a clean search query."""
+    text = text.lower() # Work with lowercase
+    triggers = [
+        "busca información sobre", "busca en la web", "busca en google", "busca",
+        "googlea acerca de", "googlea",
+        "search the web for", "search for", "search",
+        "google about", "google"
+    ]
+    # Sort triggers by length, longest first, to avoid partial matches
+    triggers.sort(key=len, reverse=True)
+
+    for trigger in triggers:
+        # Check if the text starts with the trigger phrase
+        if text.startswith(trigger + " "):
+            # Return the part of the string that comes after the trigger
+            return text[len(trigger):].strip()
+            
+    # If no trigger phrase was found at the start, return the original text
+    return text.strip()
+
 class Plugin:
     def __init__(self):
-        """
-        Inicializa el plugin de control del navegador.
-        """
-        # Es preferible que ConfigManager sea un singleton o se pase a través del contexto
-        # para evitar múltiples inicializaciones y asegurar un acceso consistente a la configuración.
-        # Aquí se asume que ConfigManager() devuelve la instancia singleton o que es seguro instanciarlo.
         self.config_manager = ConfigManager()
         logger.info("Plugin BrowserControl inicializado.")
 
     def get_description(self) -> str:
-        return "Abre el navegador web predeterminado o una URL específica."
-
-    def can_handle(self, text: str, doc=None, context: dict = None, entities: list = None) -> bool:
-        """
-        Determina si este plugin puede manejar el comando de voz.
-        Busca frases como "abrir navegador" o "open browser".
-        """
-        text_lower = text.lower()
-        keywords = ["abrir navegador", "open browser", "abre el navegador"]
-        # Podría ser más sofisticado usando el 'doc' de spaCy para lemas o intenciones.
-        return any(keyword in text_lower for keyword in keywords)
+        return f"{RESPONSE_TEXTS['es']['description']} / {RESPONSE_TEXTS['en']['description']}"
 
     def handle(self, text: str, doc=None, context: dict = None, entities: list = None) -> str:
-        """
-        Maneja el comando para abrir el navegador.
-        Abre la URL configurada en 'app_config.json' bajo la clave 'navegador_predeterminado_url'
-        o una URL por defecto si no está configurada.
-        """
-        # Intenta obtener la URL del navegador desde la configuración.
-        # La clave 'navegador_predeterminado_url' es un ejemplo, ajústala según tu app_config.json.
-        default_url = "https://google.com"
-        url_to_open = self.config_manager.get_app_setting("navegador_predeterminado_url", default_url)
+        current_lang = context.get('current_conversation_lang', 'es') if context else 'es'
+        specific_intent = context.get('recognized_intent_for_plugin', '')
+        responses = RESPONSE_TEXTS[current_lang]
         
-        # Aquí se podría añadir lógica para extraer una URL específica del 'text' o 'entities'
-        # Por ejemplo: "abrir navegador en example.com"
+        action_message = ""
+        url_to_open = ""
+
+        if specific_intent == "INTENT_OPEN_URL":
+            url_match = re.search(r"([a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)", text)
+            if url_match:
+                url_to_open = "http://" + url_match.group(1).lower()
+                action_message = responses["opening_url"].format(url=url_match.group(1).lower())
+            else:
+                url_to_open = self.config_manager.get_app_setting("browser_default_url", "https://google.com")
+                action_message = responses["url_not_found"]
+
+        elif specific_intent == "INTENT_SEARCH_WEB":
+            query = _extract_search_query(text)
+            if query:
+                encoded_query = quote_plus(query)
+                search_url_template = self.config_manager.get_app_setting("browser_search_url_template", "https://www.google.com/search?q={query}")
+                url_to_open = search_url_template.format(query=encoded_query)
+                action_message = responses["searching_for"].format(query=query)
+            else:
+                url_to_open = self.config_manager.get_app_setting("browser_default_url", "https://google.com")
+                action_message = responses["query_not_found"]
+        
+        else:
+            logger.warning(f"BrowserControl plugin handled an unexpected intent: '{specific_intent}'")
+            url_to_open = self.config_manager.get_app_setting("browser_default_url", "https://google.com")
+            action_message = responses["url_not_found"]
 
         try:
-            logger.info(f"Abriendo navegador en la URL: {url_to_open}")
+            logger.info(f"{action_message} URL: {url_to_open}")
             webbrowser.open(url_to_open)
-            return f"Navegador abierto en {url_to_open}."
+            return action_message
         except Exception as e:
-            logger.error(f"No se pudo abrir el navegador: {e}")
-            return "Lo siento, ocurrió un error al intentar abrir el navegador."
+            logger.error(f"Could not open browser: {e}")
+            return responses["open_error"]

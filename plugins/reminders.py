@@ -1,144 +1,166 @@
-"""
-Plugin para gestionar recordatorios.
-"""
+# plugins/reminders.py
 import logging
-import datetime
-import threading
-import time
-import re # For basic parsing
-from spacy.tokens import Doc # For type hinting
-from core.text_to_speech import hablar # Import a central hablar function
-from utils.config_manager import ConfigManager # For consistency, though not heavily used here yet
+import re
+import json
+import os
+from datetime import datetime
+import dateparser
 
 logger = logging.getLogger(__name__)
 
+RESPONSE_TEXTS = {
+    "es": {
+        "description": "Gestiona recordatorios y alarmas.",
+        "reminder_set": "Entendido. Te recordaré: '{task}' el {date} a las {time}.",
+        "alarm_set": "Ok, alarma configurada para las {time}.",
+        "cancel_success": "Ok, he cancelado tus recordatorios/alarmas pendientes.",
+        "parse_error": "No pude entender la hora o la fecha para el recordatorio.",
+        "past_time_error": "No puedo programar un recordatorio en el pasado.",
+        "task_not_found": "No pude entender qué recordarte."
+    },
+    "en": {
+        "description": "Manages reminders and alarms.",
+        "reminder_set": "Okay. I'll remind you to: '{task}' on {date} at {time}.",
+        "alarm_set": "Okay, alarm set for {time}.",
+        "cancel_success": "Okay, I've cancelled your pending reminders/alarms.",
+        "parse_error": "I couldn't understand the time or date for the reminder.",
+        "past_time_error": "I can't schedule a reminder in the past.",
+        "task_not_found": "I couldn't understand what to remind you about."
+    }
+}
+
 class Plugin:
+    """
+    To integrate the reminder checking functionality, you should call the `check_reminders` method
+    of the `Plugin` instance regularly from your main application loop.
+
+    For example:
+
+    ```python
+    # In your main application file
+    from plugins.reminders import Plugin as RemindersPlugin
+    import time
+
+    reminders_plugin = RemindersPlugin()
+
+    while True:
+        # Your main application logic here
+        reminders_plugin.check_reminders()
+        time.sleep(1) # Check every second
+    ```
+    """
     def __init__(self):
-        self.config_manager = ConfigManager() # Standard plugin initialization
+        self.active_reminders = []
+        self.load_reminders()
         logger.info("Plugin Reminders inicializado.")
 
     def get_description(self) -> str:
-        return "Programa recordatorios. Ejemplo: 'recuérdame llamar a Juan mañana a las 10 am' o 'recordatorio comprar leche en 2 horas'."
+        return f"{RESPONSE_TEXTS['es']['description']} / {RESPONSE_TEXTS['en']['description']}"
 
-    def _parse_datetime_from_entities(self, entities: list, text: str) -> tuple:
-        """
-        Intenta extraer una fecha y hora futuras de las entidades o texto.
-        Retorna (datetime_obj, tarea_restante) o (None, texto_original).
-        Esta es una implementación MUY BÁSICA y necesita una librería de parsing robusta.
-        """
-        # TODO: Implementar un parser de fecha/hora robusto (e.g., using parsedatetime, dateparser, or custom logic with spaCy DATE/TIME entities)
-        # Por ahora, busca un formato específico YYYY-MM-DD HH:MM:SS o intenta algo muy simple.
+    def handle(self, text: str, doc=None, context: dict = None, entities: list = None) -> str:
+        current_lang = context.get('current_conversation_lang', 'es') if context else 'es'
+        specific_intent = context.get('recognized_intent_for_plugin', '')
+
+        if specific_intent in ["INTENT_SET_REMINDER", "INTENT_SET_ALARM"]:
+            return self._handle_set_reminder(text, doc, current_lang, specific_intent)
+        elif specific_intent == "INTENT_CANCEL":
+            return self._handle_cancel_reminders(current_lang)
+
+        return "Internal error in reminder plugin."
+
+    def _handle_set_reminder(self, text: str, doc, current_lang: str, specific_intent: str) -> str:
+        responses = RESPONSE_TEXTS[current_lang]
+        reminder_time, time_phrase = self._parse_time(doc, current_lang)
+
+        if not reminder_time:
+            logger.warning(f"All parsing strategies failed for: '{text}'")
+            return responses["parse_error"]
+
+        if reminder_time < datetime.now():
+            return responses["past_time_error"]
+
+        task = self._extract_task(text, time_phrase, current_lang)
+
+        reminder = {"task": task, "time": reminder_time.isoformat(), "lang": current_lang}
+        self.active_reminders.append(reminder)
+        self.save_reminders()
         
-        date_str, time_str = None, None
-        task_parts = []
+        time_str = reminder_time.strftime("%I:%M %p" if current_lang == 'en' else "%H:%M")
+        if specific_intent == "INTENT_SET_ALARM":
+            return responses["alarm_set"].format(time=time_str)
+        else:
+            date_str = reminder_time.strftime("%x")
+            return responses["reminder_set"].format(task=task, date=date_str, time=time_str)
 
-        # Intenta encontrar un formato específico primero
-        datetime_match = re.search(r'(\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}:\d{2})', text)
-        if datetime_match:
-            try:
-                dt_obj = datetime.datetime.strptime(datetime_match.group(1), "%Y-%m-%d %H:%M:%S")
-                # Asumir que el resto del texto es la tarea
-                remaining_task = text.replace(datetime_match.group(1), "").strip()
-                # Limpiar palabras clave comunes de recordatorio
-                remaining_task = re.sub(r'^(recuérdame|recordatorio|reminder|remind me)\s*(que|de|sobre)?\s*', '', remaining_task, flags=re.IGNORECASE).strip()
-                remaining_task = re.sub(r'\s*(a las|el día|en|para)\s*$', '', remaining_task, flags=re.IGNORECASE).strip()
-                if remaining_task:
-                    return dt_obj, remaining_task
-            except ValueError:
-                logger.debug("Se encontró un patrón similar a fecha/hora, pero no es válido.")
+    def _handle_cancel_reminders(self, current_lang: str) -> str:
+        self.active_reminders.clear()
+        self.save_reminders()
+        logger.info("All pending reminders have been cancelled.")
+        return RESPONSE_TEXTS[current_lang]["cancel_success"]
 
-        # Si no, intenta usar entidades (esto es muy simplificado)
-        # Una lógica real necesitaría convertir "mañana", "5 pm", etc., a datetime.
-        # Esta parte es solo un placeholder para la idea.
-        if entities:
-            # Esta es una lógica de ejemplo y necesitaría ser mucho más robusta
-            # Por ejemplo, manejar "mañana a las 5pm", "en 2 horas", "el próximo martes"
-            # Aquí solo un ejemplo si se detecta una fecha y hora separadas y se pueden combinar.
-            # Esto es altamente propenso a errores y solo ilustrativo.
-            pass # Dejar para una implementación más robusta.
+    def _parse_time(self, doc, current_lang: str) -> (datetime, str):
+        time_ents = [ent for ent in doc.ents if ent.label_ in ['TIME', 'DATE']]
+        if not time_ents:
+            return None, ""
 
-        logger.warning("No se pudo parsear una fecha/hora específica de la entrada para el recordatorio.")
-        return None, text # Devuelve None si no se pudo parsear, y el texto original como tarea
+        start_char = min(ent.start_char for ent in time_ents)
+        end_char = max(ent.end_char for ent in time_ents)
+        time_phrase = doc.text[start_char:end_char]
+        
+        logger.info(f"Parsing time phrase: '{time_phrase}'")
+        settings = {'PREFER_DATES_FROM': 'future'}
+        reminder_time = dateparser.parse(time_phrase, languages=[current_lang], settings=settings)
+        
+        return reminder_time, time_phrase
 
+    def _extract_task(self, text: str, time_phrase: str, current_lang: str) -> str:
+        # The core idea is to remove the time phrase and the trigger phrase.
+        # We need to be careful about the order of operations.
+        
+        # 1. Remove the time phrase first.
+        task = text.replace(time_phrase, "").strip()
 
-    def _reminder_task(self, reminder_text: str, delay_seconds: float):
-        """
-        Tarea que se ejecuta en un hilo para activar el recordatorio.
-        Usa la función central 'hablar'.
-        """
-        try:
-            if delay_seconds < 0: # No debería ocurrir si la lógica de handle es correcta
-                logger.warning(f"Intento de activar recordatorio con delay negativo: {reminder_text}")
-                return
-
-            logger.info(f"Hilo de recordatorio iniciado para '{reminder_text}'. Se activará en {delay_seconds:.2f} segundos.")
-            time.sleep(delay_seconds)
+        # 2. Define trigger phrases for both languages.
+        trigger_phrases_es = ["recuérdame que", "recuérdame", "avísame que", "avísame", "pon una alarma"]
+        trigger_phrases_en = ["remind me to", "remind me", "set an alarm for"]
+        
+        # 3. Create a regex pattern to match any of the trigger phrases.
+        if current_lang == 'es':
+            pattern = r"^(" + "|".join(trigger_phrases_es) + r")\s+"
+        else:
+            pattern = r"^(" + "|".join(trigger_phrases_en) + r")\s+"
             
-            speak_text = f"¡Recordatorio! {reminder_text}"
-            logger.info(f"Activando recordatorio: {speak_text}")
-            hablar(speak_text) # Usar la función 'hablar' importada
-        except Exception as e:
-            logger.error(f"Error en el hilo del recordatorio para '{reminder_text}': {e}", exc_info=True)
-
-    def can_handle(self, text: str, doc: Doc = None, context: dict = None, entities: list = None) -> bool:
-        text_lower = text.lower()
-        # Palabras clave expandidas basadas en el antiguo 'report_generator.py' y uso común
-        keywords = ["recuérdame", "recordatorio", "reminder", "remind me", "agenda", "evento", "programar"]
+        # 4. Remove the trigger phrase from the beginning of the task.
+        task = re.sub(pattern, "", task, flags=re.IGNORECASE).strip()
         
-        if any(keyword in text_lower for keyword in keywords):
-            return True
+        # 5. Clean up any leading/trailing colons.
+        task = task.strip(":")
         
-        if doc: # Comprobar lemas si el documento spaCy está disponible
-            lemmas = ["recordar", "remind", "agendar", "programar"]
-            if any(token.lemma_ in lemmas for token in doc):
-                return True
-        return False
-
-    def handle(self, text: str, doc: Doc = None, context: dict = None, entities: list = None) -> str:
-        logger.info(f"Plugin de Recordatorios manejando: '{text}'")
-        
-        # Intentar extraer la tarea y la hora del recordatorio
-        # Esta función _parse_datetime_from_entities necesita ser mucho más robusta.
-        target_dt, task_description = self._parse_datetime_from_entities(entities, text)
-
-        if not target_dt:
-            # Si no se pudo parsear una fecha/hora específica, pedir más detalles.
-            # O intentar una lógica de "recordar X en Y tiempo" (ej. "en 2 horas")
-            # Por ahora, se devuelve un mensaje genérico.
-            return "No pude determinar la hora para el recordatorio. Por favor, especifica cuándo (ej. 'mañana a las 10am' o 'en 30 minutos' o 'YYYY-MM-DD HH:MM:SS')."
-
-        # Limpiar la descripción de la tarea si es el texto completo
-        if task_description == text: # Si _parse_datetime_from_entities no pudo aislar la tarea
-            task_description = re.sub(r'^(recuérdame|recordatorio|reminder|remind me)\s*(que|de|sobre)?\s*', '', task_description, flags=re.IGNORECASE).strip()
-            # Quitar frases comunes de tiempo si están al final y no fueron parseadas
-            task_description = re.sub(r'\s*(a las|el día|en|para)\s*[\w\s\d:-]+$', '', task_description, flags=re.IGNORECASE).strip()
-            if not task_description: task_description = "recordatorio" # Fallback
-
-        try:
-            current_time = datetime.datetime.now()
-            time_diff_seconds = (target_dt - current_time).total_seconds()
+        # 6. If the task is empty, provide a default.
+        if not task:
+            task = "tarea sin especificar" if current_lang == 'es' else "unspecified task"
             
-            if time_diff_seconds > 0:
-                reminder_thread = threading.Thread(
-                    target=self._reminder_task,
-                    args=(task_description, time_diff_seconds),
-                    daemon=True 
-                )
-                reminder_thread.start()
-                
-                # Formatear target_dt para el mensaje de confirmación
-                time_str_format = "%Y-%m-%d a las %H:%M:%S"
-                user_friendly_time = target_dt.strftime(time_str_format)
-                
-                logger.info(f"Recordatorio programado para '{task_description}' el {user_friendly_time}.")
-                return f"Entendido. Te recordaré sobre '{task_description}' el {user_friendly_time}."
-            else:
-                logger.warning(f"Intento de programar recordatorio en el pasado: {target_dt.strftime('%Y-%m-%d %H:%M:%S')} para '{task_description}'.")
-                return "La hora especificada para el recordatorio ya ha pasado. Por favor, elige una hora futura."
-                
-        except ValueError: # Esto podría ocurrir si strptime falla, aunque _parse_datetime_from_entities debería manejarlo
-            logger.error(f"Error de formato de fecha/hora al procesar el recordatorio.")
-            return "Hubo un error con el formato de la fecha/hora para el recordatorio."
-        except Exception as e:
-            logger.error(f"Error al programar recordatorio para '{task_description}': {e}", exc_info=True)
-            return f"Lo siento, ocurrió un error al intentar programar el recordatorio."
+        return task
+
+    def load_reminders(self):
+        if os.path.exists('reminders.json'):
+            with open('reminders.json', 'r') as f:
+                try:
+                    self.active_reminders = json.load(f)
+                except json.JSONDecodeError:
+                    self.active_reminders = []
+                    logger.error("Could not decode reminders from reminders.json")
+
+    def save_reminders(self):
+        with open('reminders.json', 'w') as f:
+            json.dump(self.active_reminders, f)
+
+    def check_reminders(self):
+        now = datetime.now()
+        due_reminders = [r for r in self.active_reminders if datetime.fromisoformat(r['time']) < now]
+        for reminder in due_reminders:
+            # This is where you would trigger the reminder.
+            # For now, we'll just print to the console.
+            print(f"REMINDER: {reminder['task']}")
+            self.active_reminders.remove(reminder)
+        self.save_reminders()
