@@ -10,6 +10,7 @@ from utils.logger import setup_logging
 from utils.config_manager import ConfigManager
 from core.context_manager import ContextManager
 from core.intent_processor import IntentProcessor
+from core.knowledge_manager import KnowledgeManager  # Añadir esta línea
 from ui.cli_interface import start_cli
 from utils.database_handler import create_connection, create_table, collect_data  # Import database functions
 import json
@@ -88,7 +89,17 @@ def main():
         logger.critical(f"Error crítico al inicializar ContextManager: {e}", exc_info=True)
         print(f"Error crítico al iniciar el gestor de contexto: {e}. JARVIS no puede continuar.")
         return
+        
+    # 3.1 Inicializar el KnowledgeManager
+    try:
+        knowledge_manager = KnowledgeManager(config_manager)
+        logger.info("KnowledgeManager inicializado. Estructura de directorios de conocimiento creada.")
+    except Exception as e:
+        logger.critical(f"Error crítico al inicializar KnowledgeManager: {e}", exc_info=True)
+        print(f"Error crítico al iniciar el gestor de conocimiento: {e}. JARVIS continuará con funcionalidad limitada.")
+        knowledge_manager = None
 
+        
     # 4. Inicializar el IntentProcessor
     # IntentProcessor carga modelos NLP y plugins en su __init__
     try:

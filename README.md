@@ -10,12 +10,10 @@ JARVIS es un asistente virtual inteligente diseñado para facilitar tareas diari
 ## ✨ Características Principales
 
 - **Reconocimiento de Voz**: Interacción mediante comandos hablados (soporta modo offline con Vosk).
-- **Procesamiento Avanzado de Lenguaje Natural (PLN)**:
-    - **Comprensión Multilingüe (Español/Inglés)**: Procesamiento adaptado al idioma detectado.
-    - **Reconocimiento de Intenciones**: Identifica el propósito del usuario usando spaCy y modelos Zero-Shot de Hugging Face Transformers.
-    - **Extracción de Entidades**: Detecta información clave (fechas, horas, lugares, nombres) usando spaCy EntityRuler y modelos NER de Hugging Face.
-    - **Análisis de Sentimiento**: Evalúa el tono del usuario para respuestas más empáticas.
-    - **Respuesta a Preguntas (QA)**: Capacidad de responder preguntas basadas en contexto.
+- **Procesamiento de Lenguaje Natural (PLN) Personalizado**:
+    - **Comprensión Multilingüe (Español/Inglés)**: Procesamiento adaptado al idioma detectado automáticamente.
+    - **Reconocimiento de Intenciones**: Utiliza un clasificador **Naive Bayes personalizado** (`core/my_custom_nlu.py`) para una identificación de intenciones rápida y eficiente, entrenado con datos específicos del proyecto.
+    - **Extracción de Entidades**: Combina los modelos NER base de **spaCy** con un **EntityRuler** personalizado para detectar con precisión información clave como fechas, horas, lugares y más.
 - **Integración con APIs Externas**: Obtiene información en tiempo real (ej. clima con OpenWeatherMap).
 - **Sistema de Plugins Extensible**: Arquitectura modular para añadir nuevas funcionalidades fácilmente.
 - **Entrada de Texto como Fallback**: Permite comandos por texto si el reconocimiento de voz falla.
@@ -55,7 +53,7 @@ JARVIS es un asistente virtual inteligente diseñado para facilitar tareas diari
 
 3. **Instalar dependencias**:
    ```bash
-   pip install -r reduced-requirements-0.5.1.txt
+   pip install -r requirements.txt
    ```
    *(Asegúrate de que el entorno virtual esté activado antes de ejecutar este comando)*
 
@@ -92,7 +90,7 @@ My_Project/
 ├── main.py                 # Punto de entrada principal
 ├── README.md               # Este archivo
 ├── Recomendaciones.pdf
-├── reduced-requirements-0.5.1.txt # Dependencias del proyecto
+├── requirements.txt # Dependencias del proyecto
 ├── .env                    # Variables de entorno (API Keys, etc. - No incluir en Git)
 ├── config/                 # Configuraciones específicas
 │   ├── config.json
@@ -190,7 +188,7 @@ JARVIS cargará automáticamente cualquier archivo `.py` (que no sea `__init__.p
 # O instala dependencias adicionales manualmente:
 # pip install pytest flake8 black ... 
 ```
-*(Nota: Actualmente solo existe `reduced-requirements-0.5.1.txt`. Si se necesita un archivo completo para desarrollo, debería crearse)*
+*(Nota: Actualmente solo existe `requirements.txt`. Si se necesita un archivo completo para desarrollo, debería crearse)*
 
 ### Ejecutar tests
 
