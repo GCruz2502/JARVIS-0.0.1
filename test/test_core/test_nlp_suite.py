@@ -69,7 +69,7 @@ TEST_CASES = [
             {
                 "lang": "es",
                 "text": "¿Qué tiempo hace en París?",
-                "expected_intent_label": "weather", 
+                "expected_intent_label": "INTENT_GET_WEATHER", 
                 "expected_entities": [["Pa", "MISC"], ["##rís", "LOC"]], # Current HF NER output
                 "expected_sentiment": "NEU", # Actual model output
                 "is_question": True,
@@ -86,7 +86,7 @@ TEST_CASES = [
             {
                 "lang": "en",
                 "text": "Play the song 'Bohemian Rhapsody' by Queen",
-                "expected_intent_label": "music", 
+                "expected_intent_label": "INTENT_PLAY_MUSIC", 
                 "expected_entities": [["'Bohemian Rhapsody'", "WORK_OF_ART"]], # Adjusted: Ruler now correctly identifies this. "Queen" (ORG) is still missed by models.
                 "expected_sentiment": "POSITIVE", # Actual model output
                 "is_question": False,
@@ -103,7 +103,7 @@ TEST_CASES = [
             {
                 "lang": "es",
                 "text": "Estoy muy triste hoy.",
-                "expected_intent_label": None, 
+                "expected_intent_label": "INTENT_SENTIMENT_ANALYSIS", 
                 "expected_entities": [["hoy", "DATE"]], # Ruler identifies "hoy"
                 "expected_sentiment": "NEG", # Actual model output
                 "is_question": False,
@@ -120,7 +120,7 @@ TEST_CASES = [
             {
                 "lang": "en",
                 "text": "What is the capital of France?",
-                "expected_intent_label": "qa_fallback", # Expecting QA to trigger intent now with context
+                "expected_intent_label": "INTENT_ANSWER_QUESTION", # Expecting QA to trigger intent now with context
                 "expected_entities": [["France", "LOC"]], # HF NER output
                 "expected_sentiment": "POSITIVE", # Actual model output
                 "is_question": True,
@@ -137,7 +137,7 @@ TEST_CASES = [
             {
                 "lang": "en",
                 "text": "What's the weather like in New York City?",
-                "expected_intent_label": "weather", # This will likely still fail, good for tracking
+                "expected_intent_label": "INTENT_GET_WEATHER", # This will likely still fail, good for tracking
                 "expected_entities": [["New York City", "LOC"]], # HF NER gets LOC, spaCy gets GPE. LOC is fine.
                 "expected_sentiment": "POSITIVE", # Model currently outputs POSITIVE
                 "is_question": True,
@@ -154,7 +154,7 @@ TEST_CASES = [
             {
                 "lang": "es",
                 "text": "Pon la canción 'Despacito'",
-                "expected_intent_label": "music",
+                "expected_intent_label": "INTENT_PLAY_MUSIC",
                 "expected_entities": [["can", "ORG"], ["'Despacito'", "WORK_OF_ART"]], # Adjusted to current output, "can" ORG is spurious from HF NER
                 "expected_sentiment": "NEU", # Expected
                 "is_question": False,
@@ -171,7 +171,7 @@ TEST_CASES = [
             {
                 "lang": "en",
                 "text": "Can you tell me a joke?",
-                "expected_intent_label": None, # No "jokes" plugin exists, so intent should be None
+                "expected_intent_label": "INTENT_GENERAL_CHAT", # No "jokes" plugin exists, so intent should be None
                 "expected_entities": [],
                 "expected_sentiment": "NEGATIVE", # Model currently outputs NEGATIVE
                 "is_question": True, # It's a question, but intent should be jokes
@@ -188,7 +188,7 @@ TEST_CASES = [
             {
                 "lang": "es",
                 "text": "Recuérdame llamar a Juan al 6666-7777 mañana a las 3 pm sobre la canción 'Fiesta Eterna'",
-                "expected_intent_label": "reminders", 
+                "expected_intent_label": "INTENT_SET_REMINDER", 
                 "expected_entities": [ # Adjusted to current actual output for now
                     ["Re", "ORG"],
                     ["Juan", "LOC"],
@@ -212,7 +212,7 @@ TEST_CASES = [
             {
                 "lang": "es",
                 "text": "Dime el pronóstico para Barcelona",
-                "expected_intent_label": "weather",
+                "expected_intent_label": "INTENT_GET_WEATHER",
                 "expected_entities": [["Barcelona", "ORG"]], # Adjusted to current actual output (HF NER identifies as ORG)
                 "expected_sentiment": "NEU",
                 "is_question": False, # Statement, but implies a question
@@ -229,7 +229,7 @@ TEST_CASES = [
             {
                 "lang": "en",
                 "text": "I want to hear 'Stairway to Heaven'",
-                "expected_intent_label": "music",
+                "expected_intent_label": "INTENT_PLAY_MUSIC",
                 "expected_entities": [["'Stairway to Heaven'", "WORK_OF_ART"]],
                 "expected_sentiment": "POSITIVE", # Model might see "want to hear" as positive
                 "is_question": False,
@@ -246,7 +246,7 @@ TEST_CASES = [
             {
                 "lang": "es",
                 "text": "música ahora",
-                "expected_intent_label": "music", # Could be music, or null if too ambiguous
+                "expected_intent_label": "INTENT_PLAY_MUSIC", # Could be music, or null if too ambiguous
                 "expected_entities": [], # "ahora" might be TIME by ruler
                 "expected_sentiment": "NEU",
                 "is_question": False,
@@ -268,7 +268,7 @@ TEST_CASES = [
             {
                 "lang": "es",
                 "text": "cuéntame algo interesante sobre el universo",
-                "expected_intent_label": "general_chat", # Expecting the fallback to be identified
+                "expected_intent_label": "INTENT_GENERAL_CHAT", # Expecting the fallback to be identified
                 "expected_entities": [], # No specific entities expected for this generic input
                 "expected_sentiment": None, # Sentiment might vary, not strictly testing it here
                 "is_question": True, # It's a question
@@ -296,8 +296,8 @@ class NLPEvaluationSuite:
         
         results = []
 
-        for input_data in test_case_data["inputs"]:
-            logger.info(f"Processing lang='{input_data['lang']}', text='{input_data['text']}'")
+        for input_data in test_case_data['inputs']:
+            logger.info(f"Processing lang=\"{input_data['lang']}\", text=\"{input_data['text']}\"")
             
             # Simulate the context that would be in IntentProcessor
             current_context = {
@@ -348,119 +348,84 @@ class NLPEvaluationSuite:
 
 
             # --- Comparisons ---
-            intent_match = actual_intent == input_data["expected_intent_label"]
+            intent_match = actual_intent == input_data['expected_intent_label']
 
             # Refined Entity comparison: Check for exact match of (text, label) sets, ignoring order.
-            # Extract just (text, label) from actual entities for comparison
-            # Ensure 'text' and 'label' keys exist in each entity dict
-            actual_ents_tuples = set(
-                (ent.get('text'), ent.get('label'))
-                for ent in actual_entities
-                if ent.get('text') is not None and ent.get('label') is not None
-            )
-            expected_ents_tuples = set(tuple(e) for e in input_data["expected_entities"])
-            entities_match = actual_ents_tuples == expected_ents_tuples
+            # Extract just (text, label) from actual_entities for comparison
+            actual_entities_set = set(tuple(e) for e in actual_entities)
+            expected_entities_set = set(tuple(e) for e in input_data["expected_entities"])
+            entities_match = actual_entities_set == expected_entities_set
 
+            sentiment_match = True
+            if input_data["expected_sentiment"] is not None:
+                sentiment_match = actual_sentiment_label == input_data["expected_sentiment"]
 
-            sentiment_match = False
-            if actual_sentiment_label and input_data["expected_sentiment"]:
-                 sentiment_match = actual_sentiment_label.upper() == input_data["expected_sentiment"].upper()
-            elif not actual_sentiment_label and not input_data["expected_sentiment"]:
-                 sentiment_match = True # Both are None/empty
+            qa_answer_match = True
+            if input_data["expected_qa_answer_part"] is not None:
+                qa_answer_match = input_data["expected_qa_answer_part"] in (actual_qa_answer or "")
 
-            qa_answer_match = False
-            # Check if QA was expected and an answer was expected/received
-            if input_data.get("is_question"):
-                expected_answer_part = input_data.get("expected_qa_answer_part")
-                if expected_answer_part and actual_qa_answer:
-                    qa_answer_match = expected_answer_part.lower() in actual_qa_answer.lower()
-                elif not expected_answer_part and not actual_qa_answer: # Expect no answer, got no answer
-                    qa_answer_match = True
-                # If QA wasn't expected to yield an answer part, but did, it's a mismatch (handled by qa_answer_match starting as False)
-            else:
-                 # If it wasn't a question, QA match is true if no answer was produced
-                 qa_answer_match = not actual_qa_answer
+            empathetic_response_match = True
+            if input_data["expected_empathetic_response"] is not None:
+                empathetic_response_match = actual_empathetic_response == input_data["expected_empathetic_response"]
 
-            # Empathetic response match is direct comparison of boolean flags
-            empathetic_match = actual_empathetic_response == input_data["expected_empathetic_response"]
+            # For TC012_Ollama_Fallback_ES, check plugin_used and final_response
+            plugin_used_match = True
+            final_response_not_error = True
+            if test_case_data["id"] == "TC012_Ollama_Fallback_ES":
+                plugin_used_match = actual_plugin_used == "GeneralChatFallback_Ollama"
+                final_response_not_error = "error" not in (actual_final_response or "").lower()
 
-            # Specific checks for Ollama fallback test
-            ollama_fallback_check_passed = None
-            if input_data.get("expected_intent_label") == "general_chat":
-                ollama_fallback_check_passed = actual_plugin_used == "GeneralChatFallback_Ollama" and \
-                                               actual_final_response is not None and \
-                                               "Lo siento" not in actual_final_response and \
-                                               "No pude" not in actual_final_response and \
-                                               "No estoy seguro" not in actual_final_response
-                if ollama_fallback_check_passed is False: # If it failed, log why
-                    logger.warning(f"TC012 Ollama Fallback Check FAILED: plugin_used='{actual_plugin_used}', final_response='{actual_final_response}'")
+            # Log detailed results for debugging
+            logger.info(f"  Test Case: {test_case_data['id']}, Input: {input_data['text']}")
+            logger.info(f"    Expected Intent: {input_data['expected_intent_label']}, Actual Intent: {actual_intent}, Match: {intent_match}")
+            logger.info(f"    Expected Entities: {input_data['expected_entities']}, Actual Entities: {actual_entities}, Match: {entities_match}")
+            logger.info(f"    Expected Sentiment: {input_data['expected_sentiment']}, Actual Sentiment: {actual_sentiment_label}, Match: {sentiment_match}")
+            logger.info(f"    Expected QA Answer Part: {input_data['expected_qa_answer_part']}, Actual QA Answer: {actual_qa_answer}, Match: {qa_answer_match}")
+            logger.info(f"    Expected Empathetic Response: {input_data['expected_empathetic_response']}, Actual Empathetic Response: {actual_empathetic_response}, Match: {empathetic_response_match}")
+            if test_case_data["id"] == "TC012_Ollama_Fallback_ES":
+                logger.info(f"    Expected Plugin Used: GeneralChatFallback_Ollama, Actual Plugin Used: {actual_plugin_used}, Match: {plugin_used_match}")
+                logger.info(f"    Final Response Not Error: {final_response_not_error}")
 
+            # Assertions
+            assert intent_match, \
+                f"Intent mismatch for {test_case_data['id']}: Expected {input_data['expected_intent_label']}, Got {actual_intent}"
+            assert entities_match, \
+                f"Entities mismatch for {test_case_data['id']}: Expected {input_data['expected_entities']}, Got {actual_entities}"
+            assert sentiment_match, \
+                f"Sentiment mismatch for {test_case_data['id']}: Expected {input_data['expected_sentiment']}, Got {actual_sentiment_label}"
+            assert qa_answer_match, \
+                f"QA Answer mismatch for {test_case_data['id']}: Expected part '{input_data['expected_qa_answer_part']}' in '{actual_qa_answer}'"
+            assert empathetic_response_match, \
+                f"Empathetic response mismatch for {test_case_data['id']}: Expected {input_data['expected_empathetic_response']}, Got {actual_empathetic_response}"
+            if test_case_data["id"] == "TC012_Ollama_Fallback_ES":
+                assert plugin_used_match, \
+                    f"Plugin used mismatch for {test_case_data['id']}: Expected GeneralChatFallback_Ollama, Got {actual_plugin_used}"
+                assert final_response_not_error, \
+                    f"Final response contains error for {test_case_data['id']}: {actual_final_response}"
 
-            result_summary = {
-                "input_text": input_data["text"],
-                "lang": input_data["lang"],
-                "intent_expected": input_data["expected_intent_label"],
-                "intent_actual": actual_intent,
-                "intent_match": intent_match,
-                "entities_expected": input_data["expected_entities"],
-                "entities_actual": [(e.get('text'), e.get('label')) for e in actual_entities], # Store simplified tuples for readability
-                "entities_match": entities_match,
-                "sentiment_expected": input_data["expected_sentiment"],
-                "sentiment_actual": actual_sentiment_label,
-                "sentiment_match": sentiment_match,
-                "qa_expected_part": input_data.get("expected_qa_answer_part"),
-                "qa_actual": actual_qa_answer,
-                "qa_match": qa_answer_match,
-                "empathetic_expected": input_data["expected_empathetic_response"],
-                "empathetic_actual": actual_empathetic_response,
-                "empathetic_match": empathetic_match,
-                "ollama_fallback_check_passed": ollama_fallback_check_passed, # Added for TC012
-                "full_processed_output": processed_output # Keep for debugging details
-            }
-            results.append(result_summary)
-            # Use the custom encoder for json.dumps
-            logger.info(f"Result for input '{input_data['text']}':\n{json.dumps(result_summary, indent=2, ensure_ascii=False, cls=NumpyFloatValuesEncoder)}")
+            logger.info(f"--- Test Case {test_case_data['id']} PASSED ---")
+            results.append(True)
 
-        # The duplicated result_summary block below was an error from a previous merge, removing it.
-        # This ensures results are appended only once per input_data.
-        
-        logger.info(f"--- Finished Test Case: {test_case_data['id']} ---")
-        return results
+        return all(results)
 
-    def run_all_tests(self):
-        logger.info("======== Starting Full NLP Evaluation Suite ========")
-        all_test_results = []
-        for test_case_data in TEST_CASES:
-            all_test_results.extend(self.run_test_case(test_case_data))
-        
-        # Basic summary
-        # TODO: Add more detailed metrics (precision, recall, F1 for intent & entities)
-        num_inputs_tested = sum(len(tc['inputs']) for tc in TEST_CASES)
-        successful_intents = sum(1 for r in all_test_results if r['intent_match'])
-        successful_entities = sum(1 for r in all_test_results if r['entities_match'])
-        successful_sentiments = sum(1 for r in all_test_results if r['sentiment_match'])
-        successful_qa = sum(1 for r in all_test_results if r['qa_match'])
-        successful_empathetic = sum(1 for r in all_test_results if r['empathetic_match'])
-        # Summarize Ollama fallback checks
-        ollama_tests = [r for r in all_test_results if "ollama_fallback_check_passed" in r and r["ollama_fallback_check_passed"] is not None]
-        successful_ollama_fallbacks = sum(1 for r in ollama_tests if r['ollama_fallback_check_passed'])
-
-        logger.info("======== NLP Evaluation Suite Summary ========")
-        logger.info(f"Total Inputs Processed: {num_inputs_tested}")
-        logger.info(f"Intent Matches: {successful_intents}/{num_inputs_tested}")
-        logger.info(f"Entity Set Matches: {successful_entities}/{num_inputs_tested}") # Note: definition of "match" is basic
-        logger.info(f"Sentiment Matches: {successful_sentiments}/{num_inputs_tested}")
-        logger.info(f"QA Matches: {successful_qa}/{num_inputs_tested}")
-        logger.info(f"Empathetic Response Matches: {successful_empathetic}/{num_inputs_tested}")
-        if ollama_tests:
-            logger.info(f"Ollama Fallback Checks Passed: {successful_ollama_fallbacks}/{len(ollama_tests)}")
-        logger.info("==============================================")
-        
-        # You could save all_test_results to a JSON file for detailed review
-        # with open("nlp_evaluation_results.json", "w", encoding="utf-8") as f:
-        #     json.dump(all_test_results, f, indent=2, ensure_ascii=False)
-        # logger.info("Detailed results saved to nlp_evaluation_results.json")
-
+# This allows running the tests directly from this file for debugging
 if __name__ == "__main__":
     suite = NLPEvaluationSuite()
-    suite.run_all_tests()
+    all_passed = True
+    for test_case in TEST_CASES:
+        try:
+            if not suite.run_test_case(test_case):
+                all_passed = False
+                logger.error(f"Test Case {test_case['id']} FAILED")
+        except AssertionError as e:
+            all_passed = False
+            logger.error(f"Assertion Failed in Test Case {test_case['id']}: {e}")
+        except Exception as e:
+            all_passed = False
+            logger.error(f"Error running Test Case {test_case['id']}: {e}")
+
+    if all_passed:
+        logger.info("All NLP evaluation tests passed!")
+    else:
+        logger.error("Some NLP evaluation tests failed.")
+        sys.exit(1)

@@ -64,6 +64,7 @@ class IntentProcessor:
             "INTENT_STOP": "music",           # Example: music plugin might handle 'stop'
                                             # Or you might need a general 'media_control_plugin'
             "INTENT_CANCEL": "reminders",     # Example: reminders plugin might handle cancellation
+            "INTENT_GENERAL_CHAT": "general_chat_fallback", # Assuming a general chat fallback plugin
             # "INTENT_TELL_JOKE": "joke_plugin", # If you create one
             # "INTENT_ANSWER_QUESTION": "knowledge_plugin", # If you create one for specific Q&A
             # INTENT_HELP and INTENT_CLEAR_CONTEXT are handled internally before plugin routing in process()

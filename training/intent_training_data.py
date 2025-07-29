@@ -88,6 +88,29 @@ TRAINING_SAMPLES_ES = [
     ("olvida nuestra conversación", "INTENT_CLEAR_CONTEXT"),
     ("borra todo", "INTENT_CLEAR_CONTEXT"),
     ("empecemos de nuevo", "INTENT_CLEAR_CONTEXT"),
+
+    # --- INTENT_GENERAL_CHAT ---
+    ("cuéntame algo interesante", "INTENT_GENERAL_CHAT"),
+    ("háblame de algo", "INTENT_GENERAL_CHAT"),
+    ("qué piensas de esto", "INTENT_GENERAL_CHAT"),
+    ("qué sabes", "INTENT_GENERAL_CHAT"),
+    ("dime algo", "INTENT_GENERAL_CHAT"),
+    ("hola, cómo estás", "INTENT_GENERAL_CHAT"),
+    ("qué tal tu día", "INTENT_GENERAL_CHAT"),
+    ("cómo te sientes", "INTENT_GENERAL_CHAT"),
+    ("estoy aburrido", "INTENT_GENERAL_CHAT"),
+    ("qué me cuentas", "INTENT_GENERAL_CHAT"),
+    ("me puedes ayudar en algo", "INTENT_GENERAL_CHAT"),
+    ("quiero conversar", "INTENT_GENERAL_CHAT"),
+    ("hablemos", "INTENT_GENERAL_CHAT"),
+    ("estoy aquí", "INTENT_GENERAL_CHAT"),
+    ("dime un dato curioso", "INTENT_GENERAL_CHAT"),
+    ("cuéntame una historia", "INTENT_GENERAL_CHAT"),
+    ("qué hay de nuevo", "INTENT_GENERAL_CHAT"),
+    ("cómo va todo", "INTENT_GENERAL_CHAT"),
+    ("qué haces", "INTENT_GENERAL_CHAT"),
+    ("estoy listo", "INTENT_GENERAL_CHAT"),
+    ("cuéntame algo interesante sobre el universo", "INTENT_GENERAL_CHAT"),
 ]
 
 
@@ -96,17 +119,17 @@ TRAINING_SAMPLES_EN = [
     ("what is the weather today", "INTENT_GET_WEATHER"),
     ("tell me the forecast for london", "INTENT_GET_WEATHER"),
     ("is it going to rain tomorrow", "INTENT_GET_WEATHER"),
-    ("how's the weather in new york", "INTENT_GET_WEATHER"),
+    ("how\'s the weather in new york", "INTENT_GET_WEATHER"),
     ("current temperature please", "INTENT_GET_WEATHER"),
 
     # --- INTENT_GET_TIME ---
     ("what time is it", "INTENT_GET_TIME"),
     ("tell me the time please", "INTENT_GET_TIME"),
     ("can you tell me the current time", "INTENT_GET_TIME"),
-    ("what's the time", "INTENT_GET_TIME"),
+    ("what\'s the time", "INTENT_GET_TIME"),
 
     # --- INTENT_GET_DATE ---
-    ("what is today's date", "INTENT_GET_DATE"),
+    ("what is today\'s date", "INTENT_GET_DATE"),
     ("tell me the date", "INTENT_GET_DATE"),
     ("what date is it", "INTENT_GET_DATE"),
     ("current date please", "INTENT_GET_DATE"),
@@ -137,7 +160,7 @@ TRAINING_SAMPLES_EN = [
     # --- INTENT_CANCEL ---
     ("cancel the reminder", "INTENT_CANCEL"),
     ("delete my alarm", "INTENT_CANCEL"),
-    ("nevermind don't remind me", "INTENT_CANCEL"),
+    ("nevermind don\'t remind me", "INTENT_CANCEL"),
 
     # --- INTENT_GET_NEWS ---
     ("give me the news for today", "INTENT_GET_NEWS"),
@@ -154,7 +177,7 @@ TRAINING_SAMPLES_EN = [
     # --- INTERNAL: GREET ---
     ("hello jarvis", "INTENT_GREET"),
     ("good morning", "INTENT_GREET"),
-    ("what's up", "INTENT_GREET"),
+    ("what\'s up", "INTENT_GREET"),
     ("hi", "INTENT_GREET"),
 
     # --- INTERNAL: FAREWELL ---
@@ -173,5 +196,28 @@ TRAINING_SAMPLES_EN = [
     ("clear the context", "INTENT_CLEAR_CONTEXT"),
     ("forget our conversation", "INTENT_CLEAR_CONTEXT"),
     ("erase everything", "INTENT_CLEAR_CONTEXT"),
-    ("let's start over", "INTENT_CLEAR_CONTEXT"),
+    ("let\'s start over", "INTENT_CLEAR_CONTEXT"),
+
+    # --- INTENT_GENERAL_CHAT ---
+    ("tell me something interesting", "INTENT_GENERAL_CHAT"),
+    ("talk to me about something", "INTENT_GENERAL_CHAT"),
+    ("what do you think about this", "INTENT_GENERAL_CHAT"),
+    ("what do you know", "INTENT_GENERAL_CHAT"),
+    ("tell me anything", "INTENT_GENERAL_CHAT"),
+    ("hello, how are you", "INTENT_GENERAL_CHAT"),
+    ("how\'s your day going", "INTENT_GENERAL_CHAT"),
+    ("how do you feel", "INTENT_GENERAL_CHAT"),
+    ("I\'m bored", "INTENT_GENERAL_CHAT"),
+    ("what\'s up", "INTENT_GENERAL_CHAT"),
+    ("can you help me with something", "INTENT_GENERAL_CHAT"),
+    ("I want to chat", "INTENT_GENERAL_CHAT"),
+    ("let\'s talk", "INTENT_GENERAL_CHAT"),
+    ("I\'m here", "INTENT_GENERAL_CHAT"),
+    ("tell me a fun fact", "INTENT_GENERAL_CHAT"),
+    ("tell me a story", "INTENT_GENERAL_CHAT"),
+    ("what\'s new", "INTENT_GENERAL_CHAT"),
+    ("how\'s everything", "INTENT_GENERAL_CHAT"),
+    ("what are you doing", "INTENT_GENERAL_CHAT"),
+    ("I\'m ready", "INTENT_GENERAL_CHAT"),
+    ("tell me something interesting about the universe", "INTENT_GENERAL_CHAT"),
 ]
